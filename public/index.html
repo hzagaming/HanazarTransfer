@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#13241d">
+    <meta name="description" content="无需登录，用一个传输码在不同设备之间安全传送文件。">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/styles.css">
+    <title>Hanazar Transfer — 跨设备文件传输</title>
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="site-header">
+        <a class="brand" href="/" aria-label="Hanazar Transfer 首页">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 36 36"><path d="M8 11.5h12.5M15 5l6.5 6.5L15 18M28 24.5H15.5M21 18l-6.5 6.5L21 31"/></svg>
+          </span>
+          <span>HANAZAR <b>TRANSFER</b></span>
+        </a>
+        <div class="server-status" id="server-status">
+          <span class="status-dot"></span>
+          <span>正在连接</span>
+        </div>
+      </header>
+
+      <main class="main-layout">
+        <section class="intro" aria-labelledby="page-title">
+          <div class="eyebrow"><span></span>无需账号 · 即开即传</div>
+          <h1 id="page-title">文件，从这里<br><em>抵达。</em></h1>
+          <p class="intro-copy">选择文件，获得一个传输码。<br>在任何设备的浏览器里输入它。</p>
+          <div class="feature-list" aria-label="产品特点">
+            <div><span>01</span><p><b>无需登录</b><small>打开网页就能使用</small></p></div>
+            <div><span>02</span><p><b>自动销毁</b><small id="ttl-copy">文件将在 24 小时后清除</small></p></div>
+            <div><span>03</span><p><b>多端可用</b><small>手机、平板与电脑</small></p></div>
+          </div>
+        </section>
+
+        <section class="transfer-card" aria-label="文件传输工具">
+          <div class="mode-tabs" role="tablist" aria-label="传输模式">
+            <button class="mode-tab active" id="send-tab" role="tab" aria-selected="true" aria-controls="send-panel">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4a2 2 0 002 2h10a2 2 0 002-2v-4"/></svg>
+              我要发送
+            </button>
+            <button class="mode-tab" id="receive-tab" role="tab" aria-selected="false" aria-controls="receive-panel">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12m0 0l4.5-4.5M12 16l-4.5-4.5M5 14v4a2 2 0 002 2h10a2 2 0 002-2v-4"/></svg>
+              我要接收
+            </button>
+          </div>
+
+          <div class="card-body">
+            <section id="send-panel" role="tabpanel" aria-labelledby="send-tab">
+              <div id="send-form-view">
+                <div class="panel-heading">
+                  <div><span class="step-label">STEP 01</span><h2>选择要发送的文件</h2></div>
+                  <span class="limit-copy" id="limit-copy">读取限制中…</span>
+                </div>
+
+                <label class="drop-zone" id="drop-zone">
+                  <input id="file-input" type="file" multiple>
+                  <span class="drop-icon" aria-hidden="true">
+                    <svg viewBox="0 0 32 32"><path d="M16 21V7m0 0l-5 5m5-5l5 5M7 20v3a3 3 0 003 3h12a3 3 0 003-3v-3"/></svg>
+                  </span>
+                  <strong>拖放文件到这里</strong>
+                  <span>或者 <u>浏览设备</u> 选择文件</span>
+                </label>
+
+                <div class="selected-files" id="selected-files" hidden>
+                  <div class="file-list-header"><span>已选择</span><button id="clear-files" type="button">全部清除</button></div>
+                  <ul class="file-list" id="send-file-list"></ul>
+                </div>
+
+                <button class="primary-button" id="send-button" type="button" disabled>
+                  <span>生成传输码并发送</span>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-5-5l5 5-5 5"/></svg>
+                </button>
+              </div>
+
+              <div class="success-view" id="send-result" hidden>
+                <div class="success-badge"><span>✓</span>文件已就绪</div>
+                <p class="result-kicker">在另一台设备输入传输码</p>
+                <div class="transfer-code" id="transfer-code" aria-label="传输码"></div>
+                <p class="expire-copy" id="expire-copy"></p>
+                <div class="share-field">
+                  <input id="share-link" readonly aria-label="分享链接">
+                  <button id="copy-link" type="button">复制链接</button>
+                </div>
+                <div class="result-actions">
+                  <button class="secondary-button" id="share-button" type="button">分享</button>
+                  <button class="primary-button compact" id="new-transfer" type="button">发送新文件</button>
+                </div>
+              </div>
+            </section>
+
+            <section id="receive-panel" role="tabpanel" aria-labelledby="receive-tab" hidden>
+              <div class="panel-heading receive-heading">
+                <div><span class="step-label">STEP 01</span><h2>输入传输码</h2></div>
+              </div>
+              <form id="receive-form">
+                <label class="code-label" for="code-input">8 位字母与数字</label>
+                <input class="code-input" id="code-input" name="code" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="••••••••">
+                <button class="primary-button" id="receive-button" type="submit">
+                  <span>查找文件</span>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-5-5l5 5-5 5"/></svg>
+                </button>
+              </form>
+              <div class="receive-result" id="receive-result" hidden>
+                <div class="receive-summary"><span class="ready-icon">✓</span><div><b id="receive-title">文件可以下载</b><small id="receive-meta"></small></div></div>
+                <ul class="download-list" id="download-list"></ul>
+                <button class="text-button" id="lookup-another" type="button">← 输入另一个传输码</button>
+              </div>
+            </section>
+          </div>
+
+          <div class="card-footnote">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.6-2.8 8-7 10-4.2-2-7-5.4-7-10V6l7-3zm-3 9l2 2 4-4"/></svg>
+            文件仅凭传输码访问，并会在到期后自动删除
+          </div>
+        </section>
+      </main>
+
+      <footer>
+        <span>© 2026 HANAZAR</span>
+        <span>LIGHTWEIGHT FILE RELAY · V0.1</span>
+      </footer>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
