@@ -4,23 +4,29 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#13241d">
-    <meta name="description" content="无需登录，用一个传输码在不同设备之间安全传送文件。">
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/styles.css">
+    <meta name="description" content="无需登录，在同一局域网的手机、平板和电脑之间传送文件或文字。">
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="./styles.css?v=0.2.0">
     <title>Hanazar Transfer — 跨设备文件传输</title>
   </head>
   <body>
     <div class="page-shell">
       <header class="site-header">
-        <a class="brand" href="/" aria-label="Hanazar Transfer 首页">
+        <a class="brand" href="./" aria-label="Hanazar Transfer 首页">
           <span class="brand-mark" aria-hidden="true">
             <svg viewBox="0 0 36 36"><path d="M8 11.5h12.5M15 5l6.5 6.5L15 18M28 24.5H15.5M21 18l-6.5 6.5L21 31"/></svg>
           </span>
           <span>HANAZAR <b>TRANSFER</b></span>
         </a>
-        <div class="server-status" id="server-status">
-          <span class="status-dot"></span>
-          <span>正在连接</span>
+        <div class="header-actions">
+          <button class="sound-toggle" id="sound-toggle" type="button" aria-label="开启提示音" aria-pressed="false" title="开启提示音">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 10v4h3l4 3V7L8 10H5"/><path class="sound-waves" d="M16 8.5a5 5 0 010 7M18.5 6a8.5 8.5 0 010 12"/><path class="sound-muted" d="M16 9l5 6m0-6l-5 6"/></svg>
+            <span id="sound-label">提示音关</span>
+          </button>
+          <div class="server-status" id="server-status" role="status">
+            <span class="status-dot"></span>
+            <span>正在连接</span>
+          </div>
         </div>
       </header>
 
@@ -28,7 +34,7 @@
         <section class="intro" aria-labelledby="page-title">
           <div class="eyebrow"><span></span>无需账号 · 即开即传</div>
           <h1 id="page-title">文件，从这里<br><em>抵达。</em></h1>
-          <p class="intro-copy">选择文件，获得一个传输码。<br>在任何设备的浏览器里输入它。</p>
+          <p class="intro-copy">选择附近设备，发送文件或文字。<br>没有发现设备时，也可使用传输码。</p>
           <div class="feature-list" aria-label="产品特点">
             <div><span>01</span><p><b>无需登录</b><small>打开网页就能使用</small></p></div>
             <div><span>02</span><p><b>自动销毁</b><small id="ttl-copy">文件将在 24 小时后清除</small></p></div>
@@ -42,7 +48,7 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4a2 2 0 002 2h10a2 2 0 002-2v-4"/></svg>
               我要发送
             </button>
-            <button class="mode-tab" id="receive-tab" role="tab" aria-selected="false" aria-controls="receive-panel">
+            <button class="mode-tab" id="receive-tab" role="tab" tabindex="-1" aria-selected="false" aria-controls="receive-panel">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12m0 0l4.5-4.5M12 16l-4.5-4.5M5 14v4a2 2 0 002 2h10a2 2 0 002-2v-4"/></svg>
               我要接收
             </button>
@@ -52,10 +58,24 @@
             <section id="send-panel" role="tabpanel" aria-labelledby="send-tab">
               <div id="send-form-view">
                 <div class="panel-heading">
-                  <div><span class="step-label">STEP 01</span><h2>选择要发送的文件</h2></div>
-                  <span class="limit-copy" id="limit-copy">读取限制中…</span>
+                  <div><span class="step-label">STEP 01</span><h2>选择附近设备</h2></div>
+                  <span class="limit-copy" id="peer-status" aria-live="polite">正在寻找设备…</span>
                 </div>
 
+                <div class="nearby-devices" id="nearby-devices">
+                  <div class="peer-list" id="peer-list">
+                    <div class="peer-empty"><span class="peer-radar"></span><p><b>等待其他设备</b><small>让其他设备打开这个局域网网址</small></p></div>
+                  </div>
+                  <div class="peer-actions" id="peer-actions" hidden>
+                    <span>已选择 <b id="selected-peer-name"></b></span>
+                    <button id="send-text-button" type="button">发送文字</button>
+                  </div>
+                </div>
+
+                <div class="file-step-heading">
+                  <div><span class="step-label">STEP 02</span><h3>选择文件</h3></div>
+                  <span class="limit-copy" id="limit-copy">读取限制中…</span>
+                </div>
                 <label class="drop-zone" id="drop-zone">
                   <input id="file-input" type="file" multiple>
                   <span class="drop-icon" aria-hidden="true">
@@ -70,15 +90,16 @@
                   <ul class="file-list" id="send-file-list"></ul>
                 </div>
 
-                <button class="primary-button" id="send-button" type="button" disabled>
+                <button class="primary-button" id="send-button" type="button" aria-label="生成传输码并发送" disabled>
                   <span>生成传输码并发送</span>
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-5-5l5 5-5 5"/></svg>
                 </button>
+                <button class="text-button upload-cancel" id="cancel-upload" type="button" hidden>取消本次上传</button>
               </div>
 
               <div class="success-view" id="send-result" hidden>
                 <div class="success-badge"><span>✓</span>文件已就绪</div>
-                <p class="result-kicker">在另一台设备输入传输码</p>
+                <p class="result-kicker" id="result-kicker">在另一台设备输入传输码</p>
                 <div class="transfer-code" id="transfer-code" aria-label="传输码"></div>
                 <p class="expire-copy" id="expire-copy"></p>
                 <div class="share-field">
@@ -99,7 +120,7 @@
               <form id="receive-form">
                 <label class="code-label" for="code-input">8 位字母与数字</label>
                 <input class="code-input" id="code-input" name="code" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="••••••••">
-                <button class="primary-button" id="receive-button" type="submit">
+                <button class="primary-button" id="receive-button" type="submit" aria-label="查找文件">
                   <span>查找文件</span>
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-5-5l5 5-5 5"/></svg>
                 </button>
@@ -114,18 +135,46 @@
 
           <div class="card-footnote">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.6-2.8 8-7 10-4.2-2-7-5.4-7-10V6l7-3zm-3 9l2 2 4-4"/></svg>
-            文件仅凭传输码访问，并会在到期后自动删除
+            文件只在当前局域网中转，并会在到期后自动删除
           </div>
         </section>
       </main>
 
       <footer>
         <span>© 2026 HANAZAR</span>
-        <span>LIGHTWEIGHT FILE RELAY · V0.1</span>
+        <span>LOCAL FILE RELAY · V0.2.0</span>
       </footer>
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js" type="module"></script>
+
+    <div class="modal-backdrop" id="text-modal" hidden>
+      <form class="modal-card" id="text-form" role="dialog" aria-modal="true" aria-labelledby="text-modal-title">
+        <span class="step-label">发送给附近设备</span>
+        <h2 id="text-modal-title">发送文字</h2>
+        <label for="text-input">文字内容</label>
+        <textarea id="text-input" maxlength="10000" placeholder="输入文字、链接或临时信息…" required></textarea>
+        <div class="modal-actions">
+          <button class="secondary-button" id="cancel-text" type="button">取消</button>
+          <button class="primary-button" type="submit">发送文字</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="modal-backdrop" id="incoming-modal" hidden>
+      <section class="modal-card incoming-card" role="dialog" aria-modal="true" aria-labelledby="incoming-title">
+        <div class="incoming-icon" id="incoming-icon">↓</div>
+        <span class="step-label" id="incoming-kicker">收到新内容</span>
+        <h2 id="incoming-title">附近设备发来文件</h2>
+        <p class="incoming-from" id="incoming-from"></p>
+        <div class="incoming-content" id="incoming-content"></div>
+        <div class="modal-actions">
+          <button class="secondary-button" id="dismiss-incoming" type="button">忽略</button>
+          <button class="primary-button" id="incoming-action" type="button">查看</button>
+        </div>
+      </section>
+    </div>
+
+    <script src="./app.js?v=0.2.0" type="module"></script>
   </body>
 </html>

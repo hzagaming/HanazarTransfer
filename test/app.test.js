@@ -6,13 +6,15 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { createHandler } from "../src/app.js";
+import { PeerRegistry } from "../src/peer-registry.js";
 import { TransferStore } from "../src/transfer-store.js";
 
 async function withApp(run) {
   const rootDir = await mkdtemp(join(tmpdir(), "hanazar-transfer-api-test-"));
   const store = new TransferStore({ rootDir, maxTransferBytes: 1024, maxFiles: 3 });
+  const peerRegistry = new PeerRegistry({ disconnectGraceMs: 0 });
   await store.init();
-  const server = createServer(createHandler({ store }));
+  const server = createServer(createHandler({ store, peerRegistry }));
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address();
 
@@ -20,6 +22,7 @@ async function withApp(run) {
     await run(`http://127.0.0.1:${port}`);
   } finally {
     await new Promise((resolve) => server.close(resolve));
+    peerRegistry.close();
     await store.close();
     await rm(rootDir, { recursive: true, force: true });
   }
@@ -31,6 +34,9 @@ test("serves the web app and public configuration", async () => {
     assert.equal(page.status, 200);
     assert.match(page.headers.get("content-type"), /^text\/html/);
     assert.match(await page.text(), /Hanazar Transfer/);
+
+    const script = await fetch(`${origin}/app.js`);
+    assert.equal(script.headers.get("cache-control"), "no-cache");
 
     const config = await fetch(`${origin}/api/config`).then((response) => response.json());
     assert.deepEqual(config, { maxTransferBytes: 1024, maxFiles: 3, ttlMs: 86_400_000 });
@@ -106,3 +112,65 @@ test("rejects JSON values that do not contain a file list", async () => {
     assert.equal((await response.json()).error.code, "NO_FILES");
   });
 });
+
+test("rejects cross-origin state-changing requests", async () => {
+  await withApp(async (origin) => {
+    const response = await fetch(`${origin}/api/peers`, {
+      method: "POST",
+      headers: {
+        "content-type": "text/plain",
+        "origin": "https://malicious.example"
+      },
+      body: JSON.stringify({ name: "Injected", deviceType: "desktop" })
+    });
+
+    assert.equal(response.status, 403);
+    assert.equal((await response.json()).error.code, "CROSS_ORIGIN_REQUEST");
+  });
+});
+
+test("registers LAN devices and delivers real-time messages over SSE", { timeout: 3_000 }, async () => {
+  await withApp(async (origin) => {
+    const sender = await registerPeer(origin, "Laptop", "desktop");
+    const receiver = await registerPeer(origin, "Phone", "mobile");
+    const controller = new AbortController();
+    const eventsResponse = await fetch(
+      `${origin}/api/peers/${receiver.id}/events?token=${receiver.token}`,
+      { signal: controller.signal }
+    );
+    assert.equal(eventsResponse.status, 200);
+    assert.match(eventsResponse.headers.get("content-type"), /^text\/event-stream/);
+    const reader = eventsResponse.body.getReader();
+    const decoder = new TextDecoder();
+    assert.match(decoder.decode((await reader.read()).value), /event: peers/);
+
+    const messageResponse = await fetch(`${origin}/api/peers/${sender.id}/messages`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-peer-token": sender.token
+      },
+      body: JSON.stringify({
+        to: receiver.id,
+        type: "text",
+        payload: { text: "局域网消息" }
+      })
+    });
+    assert.equal(messageResponse.status, 202);
+    const event = decoder.decode((await reader.read()).value);
+    assert.match(event, /event: message/);
+    assert.match(event, /局域网消息/);
+    await reader.cancel();
+    controller.abort();
+  });
+});
+
+async function registerPeer(origin, name, deviceType) {
+  const response = await fetch(`${origin}/api/peers`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name, deviceType })
+  });
+  assert.equal(response.status, 201);
+  return response.json();
+}

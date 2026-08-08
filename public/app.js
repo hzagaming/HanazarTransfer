@@ -1,4 +1,7 @@
 const elements = {
+  pageShell: document.querySelector(".page-shell"),
+  soundToggle: document.querySelector("#sound-toggle"),
+  soundLabel: document.querySelector("#sound-label"),
   sendTab: document.querySelector("#send-tab"),
   receiveTab: document.querySelector("#receive-tab"),
   sendPanel: document.querySelector("#send-panel"),
@@ -11,6 +14,7 @@ const elements = {
   sendFileList: document.querySelector("#send-file-list"),
   clearFiles: document.querySelector("#clear-files"),
   sendButton: document.querySelector("#send-button"),
+  cancelUpload: document.querySelector("#cancel-upload"),
   transferCode: document.querySelector("#transfer-code"),
   shareLink: document.querySelector("#share-link"),
   copyLink: document.querySelector("#copy-link"),
@@ -28,19 +32,54 @@ const elements = {
   limitCopy: document.querySelector("#limit-copy"),
   ttlCopy: document.querySelector("#ttl-copy"),
   serverStatus: document.querySelector("#server-status"),
-  toast: document.querySelector("#toast")
+  toast: document.querySelector("#toast"),
+  peerList: document.querySelector("#peer-list"),
+  peerStatus: document.querySelector("#peer-status"),
+  peerActions: document.querySelector("#peer-actions"),
+  selectedPeerName: document.querySelector("#selected-peer-name"),
+  sendTextButton: document.querySelector("#send-text-button"),
+  resultKicker: document.querySelector("#result-kicker"),
+  textModal: document.querySelector("#text-modal"),
+  textForm: document.querySelector("#text-form"),
+  textModalTitle: document.querySelector("#text-modal-title"),
+  textInput: document.querySelector("#text-input"),
+  cancelText: document.querySelector("#cancel-text"),
+  incomingModal: document.querySelector("#incoming-modal"),
+  incomingIcon: document.querySelector("#incoming-icon"),
+  incomingKicker: document.querySelector("#incoming-kicker"),
+  incomingTitle: document.querySelector("#incoming-title"),
+  incomingFrom: document.querySelector("#incoming-from"),
+  incomingContent: document.querySelector("#incoming-content"),
+  dismissIncoming: document.querySelector("#dismiss-incoming"),
+  incomingAction: document.querySelector("#incoming-action")
 };
 
 let config = { maxTransferBytes: 2 * 1024 ** 3, maxFiles: 20, ttlMs: 24 * 60 * 60 * 1000 };
 let files = [];
 let currentTransfer = null;
 let toastTimer;
+let peerSession = null;
+let eventSource = null;
+let reconnectTimer = null;
+let nearbyPeers = [];
+let selectedPeerId = null;
+let incomingMessage = null;
+const incomingQueue = [];
+let activeUploadRequest = null;
+let uploadCancelled = false;
+let soundEnabled = false;
+let audioContext = null;
+let previousFocus = null;
+
+const SOUND_STORAGE_KEY = "hanazar-sound";
+const MAX_INCOMING_QUEUE = 20;
 
 boot();
 
 async function boot() {
+  restoreSoundPreference();
   bindEvents();
-  await loadConfig();
+  await Promise.all([loadConfig(), registerLocalPeer()]);
   const code = normalizeCode(new URL(location.href).searchParams.get("code"));
   if (code) {
     switchMode("receive");
@@ -52,6 +91,9 @@ async function boot() {
 function bindEvents() {
   elements.sendTab.addEventListener("click", () => switchMode("send"));
   elements.receiveTab.addEventListener("click", () => switchMode("receive"));
+  elements.sendTab.addEventListener("keydown", handleTabKeydown);
+  elements.receiveTab.addEventListener("keydown", handleTabKeydown);
+  elements.soundToggle.addEventListener("click", toggleSound);
   elements.fileInput.addEventListener("change", () => addFiles(elements.fileInput.files));
   elements.dropZone.addEventListener("dragover", (event) => {
     event.preventDefault();
@@ -65,6 +107,7 @@ function bindEvents() {
   });
   elements.clearFiles.addEventListener("click", clearFiles);
   elements.sendButton.addEventListener("click", sendFiles);
+  elements.cancelUpload.addEventListener("click", cancelUpload);
   elements.newTransfer.addEventListener("click", resetSender);
   elements.copyLink.addEventListener("click", copyShareLink);
   elements.shareButton.addEventListener("click", shareTransfer);
@@ -76,6 +119,13 @@ function bindEvents() {
     elements.codeInput.value = normalizeCode(elements.codeInput.value).slice(0, 8);
   });
   elements.lookupAnother.addEventListener("click", resetReceiver);
+  elements.sendTextButton.addEventListener("click", openTextModal);
+  elements.cancelText.addEventListener("click", closeTextModal);
+  elements.textForm.addEventListener("submit", sendTextMessage);
+  elements.dismissIncoming.addEventListener("click", dismissIncomingMessage);
+  elements.incomingAction.addEventListener("click", handleIncomingAction);
+  document.addEventListener("keydown", handleDocumentKeydown);
+  window.addEventListener("beforeunload", disconnectLocalPeer);
 }
 
 async function loadConfig() {
@@ -93,15 +143,187 @@ async function loadConfig() {
   elements.ttlCopy.textContent = `文件将在 ${formatDuration(config.ttlMs)}后清除`;
 }
 
+async function registerLocalPeer() {
+  clearTimeout(reconnectTimer);
+  reconnectTimer = null;
+  try {
+    peerSession = await readResponse(await fetch("/api/peers", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: detectDeviceName(), deviceType: detectDeviceType() })
+    }));
+    openPeerEvents();
+  } catch {
+    peerSession = null;
+    nearbyPeers = [];
+    selectedPeerId = null;
+    renderPeers();
+    elements.peerStatus.textContent = "设备发现中断，正在重试…";
+    if (!reconnectTimer) {
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        void registerLocalPeer();
+      }, 3_000);
+    }
+  }
+}
+
+function openPeerEvents() {
+  eventSource?.close();
+  const source = new EventSource(`/api/peers/${peerSession.id}/events?token=${encodeURIComponent(peerSession.token)}`);
+  eventSource = source;
+  source.addEventListener("peers", (event) => {
+    const peers = parseEventData(event.data);
+    if (!Array.isArray(peers)) return;
+    nearbyPeers = peers;
+    renderPeers();
+  });
+  source.addEventListener("message", (event) => {
+    const message = parseEventData(event.data);
+    if (!isIncomingMessage(message)) return;
+    if (incomingQueue.length >= MAX_INCOMING_QUEUE) incomingQueue.shift();
+    incomingQueue.push(message);
+    void showNextIncomingMessage();
+  });
+  source.onopen = () => {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+    renderPeers();
+  };
+  source.onerror = () => {
+    elements.peerStatus.textContent = "正在重新连接…";
+    if (reconnectTimer) return;
+    reconnectTimer = setTimeout(() => {
+      if (eventSource !== source) return;
+      source.close();
+      peerSession = null;
+      void registerLocalPeer();
+    }, 7_000);
+  };
+}
+
+function renderPeers() {
+  const selected = nearbyPeers.find((peer) => peer.id === selectedPeerId);
+  if (!selected && selectedPeerId) selectedPeerId = null;
+  elements.peerList.replaceChildren();
+  elements.peerStatus.textContent = nearbyPeers.length ? `${nearbyPeers.length} 台设备在线` : "未发现其他设备";
+
+  if (!nearbyPeers.length) {
+    const empty = document.createElement("div");
+    empty.className = "peer-empty";
+    const radar = document.createElement("span");
+    radar.className = "peer-radar";
+    const copy = document.createElement("p");
+    const title = document.createElement("b");
+    title.textContent = "等待其他设备";
+    const hint = document.createElement("small");
+    hint.textContent = "让其他设备打开这个局域网网址";
+    copy.append(title, hint);
+    empty.append(radar, copy);
+    elements.peerList.append(empty);
+  } else {
+    for (const peer of nearbyPeers) elements.peerList.append(createPeerButton(peer));
+  }
+
+  const current = nearbyPeers.find((peer) => peer.id === selectedPeerId);
+  elements.peerActions.hidden = !current;
+  if (current) elements.selectedPeerName.textContent = current.name;
+  updateSendButtonLabel();
+}
+
+function createPeerButton(peer) {
+  const isSelected = peer.id === selectedPeerId;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `peer-button${isSelected ? " selected" : ""}`;
+  button.setAttribute("aria-label", `${peer.name}，在线${isSelected ? "，已选择" : ""}`);
+  button.setAttribute("aria-pressed", String(isSelected));
+  const icon = document.createElement("span");
+  icon.className = "peer-icon";
+  icon.append(deviceIcon(peer.deviceType));
+  const copy = document.createElement("span");
+  copy.className = "peer-copy";
+  const name = document.createElement("b");
+  name.textContent = peer.name;
+  name.title = peer.name;
+  const status = document.createElement("small");
+  status.textContent = "在线";
+  copy.append(name, status);
+  button.append(icon, copy);
+  button.addEventListener("click", () => {
+    selectedPeerId = selectedPeerId === peer.id ? null : peer.id;
+    renderPeers();
+  });
+  return button;
+}
+
+function deviceIcon(type) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", type === "mobile"
+    ? "M8 3h8a1 1 0 011 1v16a1 1 0 01-1 1H8a1 1 0 01-1-1V4a1 1 0 011-1zm3 15h2"
+    : type === "tablet"
+      ? "M6 3h12a1 1 0 011 1v16a1 1 0 01-1 1H6a1 1 0 01-1-1V4a1 1 0 011-1zm5 15h2"
+      : "M4 5h16a1 1 0 011 1v10H3V6a1 1 0 011-1zm-2 11h20M9 20h6");
+  svg.append(path);
+  return svg;
+}
+
+function detectDeviceType() {
+  const agent = navigator.userAgent;
+  if (/iPad|Tablet|Android(?!.*Mobile)/i.test(agent)) return "tablet";
+  if (/iPhone|Android.*Mobile|Mobile/i.test(agent)) return "mobile";
+  return "desktop";
+}
+
+function detectDeviceName() {
+  const agent = navigator.userAgent;
+  if (/iPhone/i.test(agent)) return "iPhone";
+  if (/iPad/i.test(agent)) return "iPad";
+  if (/Android/i.test(agent)) return detectDeviceType() === "tablet" ? "Android 平板" : "Android 手机";
+  if (/Macintosh/i.test(agent)) return "Mac";
+  if (/Windows/i.test(agent)) return "Windows 电脑";
+  if (/Linux/i.test(agent)) return "Linux 电脑";
+  return "浏览器设备";
+}
+
+function disconnectLocalPeer() {
+  clearTimeout(reconnectTimer);
+  eventSource?.close();
+  if (!peerSession) return;
+  void fetch(`/api/peers/${peerSession.id}`, {
+    method: "DELETE",
+    headers: { "x-peer-token": peerSession.token },
+    keepalive: true
+  });
+}
+
 function switchMode(mode) {
   const isSend = mode === "send";
   elements.sendTab.classList.toggle("active", isSend);
   elements.sendTab.setAttribute("aria-selected", String(isSend));
+  elements.sendTab.tabIndex = isSend ? 0 : -1;
   elements.receiveTab.classList.toggle("active", !isSend);
   elements.receiveTab.setAttribute("aria-selected", String(!isSend));
+  elements.receiveTab.tabIndex = isSend ? -1 : 0;
   elements.sendPanel.hidden = !isSend;
   elements.receivePanel.hidden = isSend;
-  if (!isSend) requestAnimationFrame(() => elements.codeInput.focus());
+}
+
+function handleTabKeydown(event) {
+  const tabs = [elements.sendTab, elements.receiveTab];
+  const currentIndex = tabs.indexOf(event.currentTarget);
+  let nextIndex;
+  if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % tabs.length;
+  else if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+  else if (event.key === "Home") nextIndex = 0;
+  else if (event.key === "End") nextIndex = tabs.length - 1;
+  else return;
+  event.preventDefault();
+  const nextTab = tabs[nextIndex];
+  switchMode(nextTab === elements.sendTab ? "send" : "receive");
+  nextTab.focus();
 }
 
 function addFiles(fileList) {
@@ -164,13 +386,15 @@ function renderSelectedFiles(progress = new Map()) {
   });
 
   elements.selectedFiles.hidden = files.length === 0;
-  elements.sendButton.disabled = files.length === 0;
+  elements.sendButton.disabled = files.length === 0 || elements.sendButton.classList.contains("loading");
 }
 
 async function sendFiles() {
   if (!files.length || elements.sendButton.classList.contains("loading")) return;
-  setSending(true, "正在创建安全传输…");
+  uploadCancelled = false;
+  setSending(true, "正在创建安全传输…", false);
   const progress = new Map();
+  const targetPeer = nearbyPeers.find((peer) => peer.id === selectedPeerId);
 
   try {
     const response = await fetch("/api/transfers", {
@@ -181,6 +405,7 @@ async function sendFiles() {
     currentTransfer = await readResponse(response);
 
     for (let index = 0; index < files.length; index += 1) {
+      if (uploadCancelled) throw cancelledUploadError();
       setSending(true, `正在上传 ${index + 1} / ${files.length}`);
       await uploadFile(currentTransfer, currentTransfer.files[index], files[index], (percent) => {
         progress.set(index, percent);
@@ -189,16 +414,42 @@ async function sendFiles() {
       progress.set(index, 100);
       renderSelectedFiles(progress);
     }
-    showSendResult(currentTransfer);
+    setSending(true, targetPeer ? "正在通知接收设备…" : "正在完成传输…", false);
+    if (targetPeer) {
+      try {
+        await sendPeerMessage(targetPeer.id, "transfer", { code: currentTransfer.code });
+        showToast(`已通知 ${targetPeer.name}`);
+      } catch (error) {
+        showToast(`${error.message}，请改用传输码`, true);
+      }
+    }
+    showSendResult(currentTransfer, targetPeer);
+    void playSound("success");
   } catch (error) {
-    showToast(error.message, true);
+    const cancelled = uploadCancelled || error.name === "AbortError";
+    setSending(true, "正在清理未完成传输…", false);
+    if (currentTransfer) await discardTransfer(currentTransfer);
+    currentTransfer = null;
+    showToast(cancelled ? "上传已取消" : error.message, !cancelled);
     setSending(false);
+    renderSelectedFiles();
+  } finally {
+    activeUploadRequest = null;
+    uploadCancelled = false;
   }
 }
 
 function uploadFile(transfer, remoteFile, file, onProgress) {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
+    activeUploadRequest = request;
+    let settled = false;
+    const finish = (callback) => {
+      if (settled) return;
+      settled = true;
+      if (activeUploadRequest === request) activeUploadRequest = null;
+      callback();
+    };
     request.open("PUT", `/api/transfers/${encodeURIComponent(transfer.code)}/files/${remoteFile.id}`);
     request.setRequestHeader("x-upload-token", transfer.uploadToken);
     request.setRequestHeader("content-type", "application/octet-stream");
@@ -206,15 +457,41 @@ function uploadFile(transfer, remoteFile, file, onProgress) {
       if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
     });
     request.addEventListener("load", () => {
-      if (request.status >= 200 && request.status < 300) resolve();
-      else reject(new Error(parseError(request.responseText)));
+      if (request.status >= 200 && request.status < 300) finish(resolve);
+      else finish(() => reject(new Error(parseError(request.responseText))));
     });
-    request.addEventListener("error", () => reject(new Error("网络中断，请重新发送")));
+    request.addEventListener("error", () => finish(() => reject(new Error("网络中断，请重新发送"))));
+    request.addEventListener("abort", () => finish(() => reject(cancelledUploadError())));
     request.send(file);
   });
 }
 
-function showSendResult(transfer) {
+function cancelUpload() {
+  if (!elements.sendButton.classList.contains("loading") || uploadCancelled) return;
+  uploadCancelled = true;
+  elements.cancelUpload.disabled = true;
+  elements.sendButton.querySelector("span").textContent = "正在取消…";
+  activeUploadRequest?.abort();
+}
+
+async function discardTransfer(transfer) {
+  try {
+    await fetch(`/api/transfers/${encodeURIComponent(transfer.code)}`, {
+      method: "DELETE",
+      headers: { "x-upload-token": transfer.uploadToken }
+    });
+  } catch {
+    // The server will remove an unreachable transfer when it expires.
+  }
+}
+
+function cancelledUploadError() {
+  const error = new Error("上传已取消");
+  error.name = "AbortError";
+  return error;
+}
+
+function showSendResult(transfer, targetPeer) {
   const shareUrl = new URL(location.href);
   shareUrl.search = "";
   shareUrl.hash = "";
@@ -225,6 +502,9 @@ function showSendResult(transfer) {
     return span;
   }));
   elements.shareLink.value = shareUrl.href;
+  elements.resultKicker.textContent = targetPeer
+    ? `已发送给 ${targetPeer.name}，也可使用下方传输码`
+    : "在另一台设备输入传输码";
   elements.expireCopy.textContent = `有效至 ${formatDate(transfer.expiresAt)}`;
   elements.sendFormView.hidden = true;
   elements.sendResult.hidden = false;
@@ -286,6 +566,7 @@ function resetSender() {
   elements.sendResult.hidden = true;
   elements.sendFormView.hidden = false;
   renderSelectedFiles();
+  updateSendButtonLabel();
 }
 
 function resetReceiver() {
@@ -303,14 +584,123 @@ function clearFiles() {
   renderSelectedFiles();
 }
 
-async function copyShareLink() {
+function openTextModal() {
+  const peer = nearbyPeers.find((candidate) => candidate.id === selectedPeerId);
+  if (!peer) return;
+  elements.textModalTitle.textContent = `发送文字给 ${peer.name}`;
+  elements.textInput.value = "";
+  showModal(elements.textModal, elements.textInput);
+}
+
+function closeTextModal() {
+  const hasIncoming = incomingQueue.length > 0;
+  hideModal(elements.textModal, !hasIncoming);
+  if (hasIncoming) void showNextIncomingMessage();
+}
+
+async function sendTextMessage(event) {
+  event.preventDefault();
+  const peer = nearbyPeers.find((candidate) => candidate.id === selectedPeerId);
+  const text = elements.textInput.value;
+  if (!peer || !text.trim()) return;
+  const button = elements.textForm.querySelector("button[type='submit']");
+  button.disabled = true;
   try {
-    await navigator.clipboard.writeText(elements.shareLink.value);
-    showToast("分享链接已复制");
+    await sendPeerMessage(peer.id, "text", { text });
+    closeTextModal();
+    showToast(`文字已发送给 ${peer.name}`);
+    void playSound("success");
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function sendPeerMessage(to, type, payload) {
+  if (!peerSession) throw new Error("局域网设备连接尚未就绪");
+  return readResponse(await fetch(`/api/peers/${peerSession.id}/messages`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-peer-token": peerSession.token
+    },
+    body: JSON.stringify({ to, type, payload })
+  }));
+}
+
+async function showNextIncomingMessage() {
+  if (incomingMessage || !incomingQueue.length || !elements.textModal.hidden || !elements.incomingModal.hidden) return;
+  incomingMessage = incomingQueue.shift();
+  const message = incomingMessage;
+  const isTransfer = incomingMessage.type === "transfer";
+  elements.incomingIcon.textContent = isTransfer ? "↓" : "T";
+  elements.incomingKicker.textContent = isTransfer ? "收到新文件" : "收到新文字";
+  elements.incomingTitle.textContent = isTransfer ? "附近设备发来文件" : "附近设备发来文字";
+  elements.incomingFrom.textContent = `来自 ${incomingMessage.from.name}`;
+  elements.incomingAction.textContent = isTransfer ? "查看并下载" : "复制文字";
+
+  if (isTransfer) {
+    elements.incomingContent.textContent = "正在读取文件信息…";
+  } else {
+    elements.incomingContent.textContent = incomingMessage.payload.text;
+  }
+  showModal(elements.incomingModal, elements.incomingAction);
+  void playSound("incoming");
+
+  if (isTransfer) {
+    try {
+      const transfer = await readResponse(await fetch(`/api/transfers/${encodeURIComponent(incomingMessage.payload.code)}`));
+      if (incomingMessage !== message) return;
+      elements.incomingContent.textContent = `${transfer.files.length} 个文件 · ${formatBytes(transfer.totalSize)}\n${transfer.files.map((file) => file.name).join("\n")}`;
+    } catch {
+      if (incomingMessage !== message) return;
+      elements.incomingContent.textContent = `传输码：${incomingMessage.payload.code}`;
+    }
+  }
+}
+
+function dismissIncomingMessage() {
+  const hasIncoming = incomingQueue.length > 0;
+  hideModal(elements.incomingModal, !hasIncoming);
+  incomingMessage = null;
+  void showNextIncomingMessage();
+}
+
+async function handleIncomingAction() {
+  if (!incomingMessage) return;
+  if (incomingMessage.type === "text") {
+    await copyText(incomingMessage.payload.text);
+    showToast("文字已复制");
+    dismissIncomingMessage();
+    return;
+  }
+
+  const code = incomingMessage.payload.code;
+  dismissIncomingMessage();
+  switchMode("receive");
+  elements.codeInput.value = code;
+  await lookupTransfer(code);
+}
+
+async function copyShareLink() {
+  await copyText(elements.shareLink.value, elements.shareLink);
+  showToast("分享链接已复制");
+}
+
+async function copyText(text, fallbackInput) {
+  try {
+    await navigator.clipboard.writeText(text);
   } catch {
-    elements.shareLink.select();
+    const input = fallbackInput || document.createElement("textarea");
+    if (!fallbackInput) {
+      input.value = text;
+      input.className = "clipboard-helper";
+      document.body.append(input);
+    }
+    input.select();
     document.execCommand("copy");
-    showToast("分享链接已复制");
+    if (!fallbackInput) input.remove();
   }
 }
 
@@ -331,18 +721,36 @@ async function shareTransfer() {
   await copyShareLink();
 }
 
-function setSending(active, label = "生成传输码并发送") {
+function setSending(active, label = defaultSendLabel(), cancelable = active) {
   elements.sendButton.classList.toggle("loading", active);
   elements.sendButton.disabled = active || files.length === 0;
   elements.sendButton.querySelector("span").textContent = label;
+  elements.sendButton.setAttribute("aria-label", label);
   elements.fileInput.disabled = active;
   elements.clearFiles.disabled = active;
+  elements.cancelUpload.hidden = !cancelable;
+  elements.cancelUpload.disabled = !cancelable;
+  for (const button of elements.sendFileList.querySelectorAll(".remove-file")) button.disabled = active;
+}
+
+function updateSendButtonLabel() {
+  if (elements.sendButton.classList.contains("loading")) return;
+  const label = defaultSendLabel();
+  elements.sendButton.querySelector("span").textContent = label;
+  elements.sendButton.setAttribute("aria-label", label);
+}
+
+function defaultSendLabel() {
+  const peer = nearbyPeers.find((candidate) => candidate.id === selectedPeerId);
+  return peer ? `发送给 ${peer.name}` : "生成传输码并发送";
 }
 
 function setLookupLoading(active) {
+  const label = active ? "正在查找文件" : "查找文件";
   elements.receiveButton.disabled = active;
   elements.receiveButton.classList.toggle("loading", active);
-  elements.receiveButton.querySelector("span").textContent = active ? "正在查找…" : "查找文件";
+  elements.receiveButton.querySelector("span").textContent = active ? "正在查找…" : label;
+  elements.receiveButton.setAttribute("aria-label", label);
 }
 
 async function readResponse(response) {
@@ -356,6 +764,133 @@ function parseError(value) {
     return JSON.parse(value).error?.message || "上传失败，请重试";
   } catch {
     return "上传失败，请重试";
+  }
+}
+
+function parseEventData(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function isIncomingMessage(message) {
+  if (!message || typeof message.from?.name !== "string") return false;
+  if (message.type === "text") return typeof message.payload?.text === "string";
+  return message.type === "transfer" && typeof message.payload?.code === "string";
+}
+
+function showModal(modal, focusTarget) {
+  if (previousFocus === null && elements.textModal.hidden && elements.incomingModal.hidden) {
+    previousFocus = document.activeElement;
+  }
+  modal.hidden = false;
+  elements.pageShell.inert = true;
+  elements.pageShell.setAttribute("aria-hidden", "true");
+  document.body.classList.add("modal-open");
+  requestAnimationFrame(() => {
+    if (!modal.hidden) focusTarget.focus();
+  });
+}
+
+function hideModal(modal, restoreFocus = true) {
+  modal.hidden = true;
+  if (!elements.textModal.hidden || !elements.incomingModal.hidden) return;
+  if (!restoreFocus) return;
+  elements.pageShell.inert = false;
+  elements.pageShell.removeAttribute("aria-hidden");
+  document.body.classList.remove("modal-open");
+  const target = previousFocus;
+  previousFocus = null;
+  requestAnimationFrame(() => {
+    if (target?.isConnected) target.focus();
+  });
+}
+
+function handleDocumentKeydown(event) {
+  const modal = !elements.textModal.hidden
+    ? elements.textModal
+    : !elements.incomingModal.hidden
+      ? elements.incomingModal
+      : null;
+  if (!modal) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    if (modal === elements.textModal) closeTextModal();
+    else dismissIncomingMessage();
+    return;
+  }
+  if (event.key !== "Tab") return;
+  const focusable = [...modal.querySelectorAll("button:not([disabled]), textarea:not([disabled]), input:not([disabled]), a[href]")]
+    .filter((element) => !element.hidden);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+function restoreSoundPreference() {
+  try {
+    soundEnabled = localStorage.getItem(SOUND_STORAGE_KEY) === "on";
+  } catch {
+    soundEnabled = false;
+  }
+  updateSoundToggle();
+}
+
+function toggleSound() {
+  soundEnabled = !soundEnabled;
+  try {
+    localStorage.setItem(SOUND_STORAGE_KEY, soundEnabled ? "on" : "off");
+  } catch {
+    // Sound still works for the current page when storage is unavailable.
+  }
+  updateSoundToggle();
+  if (soundEnabled) void playSound("confirm");
+}
+
+function updateSoundToggle() {
+  const label = soundEnabled ? "关闭提示音" : "开启提示音";
+  elements.soundToggle.setAttribute("aria-pressed", String(soundEnabled));
+  elements.soundToggle.setAttribute("aria-label", label);
+  elements.soundToggle.title = label;
+  elements.soundLabel.textContent = soundEnabled ? "提示音开" : "提示音关";
+}
+
+async function playSound(type) {
+  if (!soundEnabled) return;
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    audioContext ||= new AudioContextClass();
+    if (audioContext.state === "suspended") await audioContext.resume();
+    const patterns = {
+      confirm: [[520, 0]],
+      incoming: [[480, 0], [650, 0.11]],
+      success: [[540, 0], [720, 0.1]]
+    };
+    const start = audioContext.currentTime + 0.01;
+    for (const [frequency, offset] of patterns[type] || patterns.confirm) {
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(frequency, start + offset);
+      gain.gain.setValueAtTime(0.0001, start + offset);
+      gain.gain.exponentialRampToValueAtTime(0.09, start + offset + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + offset + 0.09);
+      oscillator.connect(gain).connect(audioContext.destination);
+      oscillator.start(start + offset);
+      oscillator.stop(start + offset + 0.1);
+    }
+  } catch {
+    // Audio is optional and must never block a transfer.
   }
 }
 

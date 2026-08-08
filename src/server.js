@@ -1,9 +1,10 @@
 import { createServer } from "node:http";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { networkInterfaces, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { createHandler } from "./app.js";
+import { PeerRegistry } from "./peer-registry.js";
 import { TransferStore } from "./transfer-store.js";
 
 const port = readInteger("PORT", 3000);
@@ -19,19 +20,25 @@ const store = new TransferStore({
   maxFiles: readInteger("MAX_FILES", 20)
 });
 await store.init();
+const peerRegistry = new PeerRegistry();
 
-const server = createServer(createHandler({ store }));
+const server = createServer(createHandler({ store, peerRegistry }));
 server.requestTimeout = readInteger("UPLOAD_TIMEOUT_MS", 2 * 60 * 60 * 1_000);
 server.headersTimeout = 60_000;
 server.listen(port, host, () => {
-  console.log(`Hanazar Transfer is running at http://${host}:${port}`);
+  console.log("Hanazar Transfer is ready:");
+  for (const url of getAccessUrls(host, port)) console.log(`  ${url}`);
 });
 
 let shuttingDown = false;
 async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
-  await new Promise((resolveClose) => server.close(resolveClose));
+  peerRegistry.close();
+  await new Promise((resolveClose) => {
+    server.close(resolveClose);
+    server.closeAllConnections();
+  });
   await store.close();
   await rm(sessionDir, { recursive: true, force: true });
 }
@@ -47,4 +54,17 @@ function readInteger(name, fallback) {
     throw new TypeError(`${name} must be a positive integer`);
   }
   return parsed;
+}
+
+function getAccessUrls(host, port) {
+  if (host !== "0.0.0.0" && host !== "::") return [`http://${host}:${port}`];
+  const addresses = new Set([`http://localhost:${port}`]);
+  for (const interfaces of Object.values(networkInterfaces())) {
+    for (const address of interfaces || []) {
+      if (address.family === "IPv4" && !address.internal) {
+        addresses.add(`http://${address.address}:${port}`);
+      }
+    }
+  }
+  return [...addresses];
 }

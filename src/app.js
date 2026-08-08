@@ -20,9 +20,9 @@ const MIME_TYPES = {
   ".svg": "image/svg+xml"
 };
 
-export function createHandler({ store, publicDir = DEFAULT_PUBLIC_DIR, logger = console }) {
+export function createHandler({ store, peerRegistry, publicDir = DEFAULT_PUBLIC_DIR, logger = console }) {
   return (request, response) => {
-    route({ request, response, store, publicDir }).catch((error) => {
+    route({ request, response, store, peerRegistry, publicDir }).catch((error) => {
       if (!(error instanceof TransferError)) logger.error(error);
       if (!response.headersSent) sendError(response, error);
       else response.destroy();
@@ -30,10 +30,11 @@ export function createHandler({ store, publicDir = DEFAULT_PUBLIC_DIR, logger = 
   };
 }
 
-async function route({ request, response, store, publicDir }) {
+async function route({ request, response, store, peerRegistry, publicDir }) {
   setSecurityHeaders(response);
   const url = new URL(request.url, "http://localhost");
   const path = url.pathname;
+  assertSameOrigin(request);
 
   if (request.method === "GET" && path === "/api/config") {
     sendJson(response, 200, {
@@ -46,6 +47,56 @@ async function route({ request, response, store, publicDir }) {
 
   if (request.method === "GET" && path === "/health") {
     sendJson(response, 200, { status: "ok" });
+    return;
+  }
+
+  if (request.method === "POST" && path === "/api/peers") {
+    const body = await readJson(request);
+    sendJson(response, 201, peerRegistry.register(body));
+    return;
+  }
+
+  const peerEventsMatch = path.match(/^\/api\/peers\/([a-f0-9]{16})\/events$/);
+  if (peerEventsMatch && request.method === "GET") {
+    response.writeHead(200, {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      "connection": "keep-alive",
+      "x-accel-buffering": "no"
+    });
+    response.write("retry: 2000\n\n");
+    const unsubscribe = peerRegistry.subscribe(
+      peerEventsMatch[1],
+      url.searchParams.get("token"),
+      (type, data) => sendEvent(response, type, data)
+    );
+    const heartbeat = setInterval(() => response.write(": keepalive\n\n"), 15_000);
+    heartbeat.unref();
+    response.on("close", () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    });
+    return;
+  }
+
+  const peerMessageMatch = path.match(/^\/api\/peers\/([a-f0-9]{16})\/messages$/);
+  if (peerMessageMatch && request.method === "POST") {
+    const body = await readJson(request);
+    const message = peerRegistry.sendMessage({
+      fromId: peerMessageMatch[1],
+      token: request.headers["x-peer-token"],
+      toId: body?.to,
+      type: body?.type,
+      payload: body?.payload
+    });
+    sendJson(response, 202, message);
+    return;
+  }
+
+  const peerMatch = path.match(/^\/api\/peers\/([a-f0-9]{16})$/);
+  if (peerMatch && request.method === "DELETE") {
+    peerRegistry.remove(peerMatch[1], request.headers["x-peer-token"]);
+    response.writeHead(204).end();
     return;
   }
 
@@ -105,7 +156,7 @@ async function route({ request, response, store, publicDir }) {
     response.writeHead(200, {
       "content-type": MIME_TYPES[extname(name)] ?? "application/octet-stream",
       "content-length": content.length,
-      "cache-control": name === "index.html" ? "no-cache" : "public, max-age=3600"
+      "cache-control": "no-cache"
     });
     response.end(request.method === "HEAD" ? undefined : content);
     return;
@@ -140,6 +191,18 @@ function parseContentLength(value) {
   return size;
 }
 
+function assertSameOrigin(request) {
+  if (!new Set(["POST", "PUT", "PATCH", "DELETE"]).has(request.method)) return;
+  const origin = request.headers.origin;
+  if (!origin) return;
+  try {
+    if (new URL(origin).host === request.headers.host) return;
+  } catch {
+    // Invalid origins are rejected below.
+  }
+  throw new TransferError(403, "拒绝跨站请求", "CROSS_ORIGIN_REQUEST");
+}
+
 function contentDisposition(name) {
   const fallback = name.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_") || "download";
   const encoded = encodeURIComponent(name).replace(/['()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
@@ -165,6 +228,10 @@ function sendJson(response, status, value) {
     "cache-control": "no-store"
   });
   response.end(body);
+}
+
+function sendEvent(response, type, data) {
+  response.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
 function sendError(response, error) {
