@@ -25,6 +25,7 @@ const elements = {
   codeInput: document.querySelector("#code-input"),
   receiveButton: document.querySelector("#receive-button"),
   receiveResult: document.querySelector("#receive-result"),
+  receiveIcon: document.querySelector("#receive-icon"),
   receiveTitle: document.querySelector("#receive-title"),
   receiveMeta: document.querySelector("#receive-meta"),
   downloadList: document.querySelector("#download-list"),
@@ -70,9 +71,16 @@ let uploadCancelled = false;
 let soundEnabled = false;
 let audioContext = null;
 let previousFocus = null;
+let transferNeedsCleanup = false;
+let receiveRefreshTimer = null;
+let receiveRefreshGeneration = 0;
+let activeReceiveCode = null;
+let activeReceiveStatus = null;
+let activeReceiveSignature = null;
 
 const SOUND_STORAGE_KEY = "hanazar-sound";
 const MAX_INCOMING_QUEUE = 20;
+const RECEIVE_REFRESH_MS = 2_000;
 
 boot();
 
@@ -125,7 +133,7 @@ function bindEvents() {
   elements.dismissIncoming.addEventListener("click", dismissIncomingMessage);
   elements.incomingAction.addEventListener("click", handleIncomingAction);
   document.addEventListener("keydown", handleDocumentKeydown);
-  window.addEventListener("beforeunload", disconnectLocalPeer);
+  window.addEventListener("beforeunload", handlePageExit);
 }
 
 async function loadConfig() {
@@ -133,11 +141,9 @@ async function loadConfig() {
     const response = await fetch("/api/config");
     if (!response.ok) throw new Error();
     config = await response.json();
-    elements.serverStatus.className = "server-status online";
-    elements.serverStatus.lastElementChild.textContent = "服务在线";
+    setServerStatus("online");
   } catch {
-    elements.serverStatus.className = "server-status offline";
-    elements.serverStatus.lastElementChild.textContent = "服务离线";
+    setServerStatus("offline");
   }
   elements.limitCopy.textContent = `最多 ${config.maxFiles} 个 · 总计 ${formatBytes(config.maxTransferBytes)}`;
   elements.ttlCopy.textContent = `文件将在 ${formatDuration(config.ttlMs)}后清除`;
@@ -152,8 +158,10 @@ async function registerLocalPeer() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: detectDeviceName(), deviceType: detectDeviceType() })
     }));
+    setServerStatus("online");
     openPeerEvents();
-  } catch {
+  } catch (error) {
+    setServerStatus(error.status ? "online" : "offline");
     peerSession = null;
     nearbyPeers = [];
     selectedPeerId = null;
@@ -188,9 +196,11 @@ function openPeerEvents() {
   source.onopen = () => {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
+    setServerStatus("online");
     renderPeers();
   };
   source.onerror = () => {
+    setServerStatus("connecting");
     elements.peerStatus.textContent = "正在重新连接…";
     if (reconnectTimer) return;
     reconnectTimer = setTimeout(() => {
@@ -200,6 +210,16 @@ function openPeerEvents() {
       void registerLocalPeer();
     }, 7_000);
   };
+}
+
+function setServerStatus(state) {
+  const labels = {
+    online: "服务在线",
+    offline: "服务离线",
+    connecting: "服务重连中"
+  };
+  elements.serverStatus.className = `server-status ${state}`;
+  elements.serverStatus.lastElementChild.textContent = labels[state];
 }
 
 function renderPeers() {
@@ -296,7 +316,18 @@ function disconnectLocalPeer() {
     method: "DELETE",
     headers: { "x-peer-token": peerSession.token },
     keepalive: true
-  });
+  }).catch(() => {});
+}
+
+function handlePageExit() {
+  disconnectLocalPeer();
+  if (!transferNeedsCleanup || !currentTransfer) return;
+  transferNeedsCleanup = false;
+  void fetch(`/api/transfers/${encodeURIComponent(currentTransfer.code)}`, {
+    method: "DELETE",
+    headers: { "x-upload-token": currentTransfer.uploadToken },
+    keepalive: true
+  }).catch(() => {});
 }
 
 function switchMode(mode) {
@@ -392,6 +423,7 @@ function renderSelectedFiles(progress = new Map()) {
 async function sendFiles() {
   if (!files.length || elements.sendButton.classList.contains("loading")) return;
   uploadCancelled = false;
+  transferNeedsCleanup = false;
   setSending(true, "正在创建安全传输…", false);
   const progress = new Map();
   const targetPeer = nearbyPeers.find((peer) => peer.id === selectedPeerId);
@@ -403,6 +435,7 @@ async function sendFiles() {
       body: JSON.stringify({ files: files.map(({ name, size, type }) => ({ name, size, type })) })
     });
     currentTransfer = await readResponse(response);
+    transferNeedsCleanup = true;
 
     for (let index = 0; index < files.length; index += 1) {
       if (uploadCancelled) throw cancelledUploadError();
@@ -414,6 +447,7 @@ async function sendFiles() {
       progress.set(index, 100);
       renderSelectedFiles(progress);
     }
+    transferNeedsCleanup = false;
     setSending(true, targetPeer ? "正在通知接收设备…" : "正在完成传输…", false);
     if (targetPeer) {
       try {
@@ -429,6 +463,7 @@ async function sendFiles() {
     const cancelled = uploadCancelled || error.name === "AbortError";
     setSending(true, "正在清理未完成传输…", false);
     if (currentTransfer) await discardTransfer(currentTransfer);
+    transferNeedsCleanup = false;
     currentTransfer = null;
     showToast(cancelled ? "上传已取消" : error.message, !cancelled);
     setSending(false);
@@ -471,6 +506,7 @@ function cancelUpload() {
   uploadCancelled = true;
   elements.cancelUpload.disabled = true;
   elements.sendButton.querySelector("span").textContent = "正在取消…";
+  elements.sendButton.setAttribute("aria-label", "正在取消上传");
   activeUploadRequest?.abort();
 }
 
@@ -501,6 +537,7 @@ function showSendResult(transfer, targetPeer) {
     span.textContent = character;
     return span;
   }));
+  elements.transferCode.setAttribute("aria-label", `传输码 ${Array.from(transfer.code).join(" ")}`);
   elements.shareLink.value = shareUrl.href;
   elements.resultKicker.textContent = targetPeer
     ? `已发送给 ${targetPeer.name}，也可使用下方传输码`
@@ -512,6 +549,8 @@ function showSendResult(transfer, targetPeer) {
 }
 
 async function lookupTransfer(inputCode) {
+  stopReceiveRefresh();
+  const generation = receiveRefreshGeneration;
   const code = normalizeCode(inputCode);
   if (code.length !== 8) {
     showToast("请输入完整的 8 位传输码", true);
@@ -521,22 +560,79 @@ async function lookupTransfer(inputCode) {
   setLookupLoading(true);
   try {
     const transfer = await readResponse(await fetch(`/api/transfers/${encodeURIComponent(code)}`));
+    if (generation !== receiveRefreshGeneration) return;
+    activeReceiveCode = code;
+    activeReceiveStatus = transfer.status;
+    activeReceiveSignature = receiveSignature(transfer);
     renderDownloads(transfer);
+    scheduleReceiveRefresh(generation);
     const url = new URL(location.href);
     url.searchParams.set("code", code);
     history.replaceState(null, "", url);
   } catch (error) {
-    showToast(error.message, true);
+    if (generation === receiveRefreshGeneration) showToast(error.message, true);
   } finally {
-    setLookupLoading(false);
+    if (generation === receiveRefreshGeneration) setLookupLoading(false);
   }
+}
+
+function scheduleReceiveRefresh(generation) {
+  clearTimeout(receiveRefreshTimer);
+  receiveRefreshTimer = null;
+  if (generation !== receiveRefreshGeneration || activeReceiveStatus !== "uploading") return;
+  receiveRefreshTimer = setTimeout(() => void refreshActiveTransfer(generation), RECEIVE_REFRESH_MS);
+}
+
+async function refreshActiveTransfer(generation) {
+  const code = activeReceiveCode;
+  if (!code || generation !== receiveRefreshGeneration) return;
+  try {
+    const transfer = await readResponse(await fetch(`/api/transfers/${encodeURIComponent(code)}`));
+    if (code !== activeReceiveCode || generation !== receiveRefreshGeneration) return;
+    const becameReady = activeReceiveStatus === "uploading" && transfer.status === "ready";
+    const signature = receiveSignature(transfer);
+    activeReceiveStatus = transfer.status;
+    if (signature !== activeReceiveSignature) {
+      activeReceiveSignature = signature;
+      renderDownloads(transfer);
+    }
+    if (becameReady) {
+      showToast("文件已全部上传，可以下载了");
+      void playSound("success");
+    }
+  } catch (error) {
+    if (code !== activeReceiveCode || generation !== receiveRefreshGeneration) return;
+    if (error.status === 404) {
+      resetReceiver();
+      showToast(error.message, true);
+      return;
+    }
+    setServerStatus("connecting");
+  }
+  scheduleReceiveRefresh(generation);
+}
+
+function stopReceiveRefresh() {
+  clearTimeout(receiveRefreshTimer);
+  receiveRefreshTimer = null;
+  receiveRefreshGeneration += 1;
+  activeReceiveCode = null;
+  activeReceiveStatus = null;
+  activeReceiveSignature = null;
+}
+
+function receiveSignature(transfer) {
+  return `${transfer.status}:${transfer.files.map((file) => Number(file.uploaded)).join("")}`;
 }
 
 function renderDownloads(transfer) {
   const uploaded = transfer.files.filter((file) => file.uploaded).length;
+  const isReady = transfer.status === "ready";
   elements.receiveForm.hidden = true;
   elements.receiveResult.hidden = false;
-  elements.receiveTitle.textContent = transfer.status === "ready" ? "文件可以下载" : "发送方仍在上传";
+  elements.receiveIcon.className = `ready-icon${isReady ? "" : " pending"}`;
+  elements.receiveIcon.textContent = isReady ? "✓" : "…";
+  elements.receiveTitle.textContent = isReady ? "文件可以下载" : "发送方仍在上传";
   elements.receiveMeta.textContent = `${uploaded} / ${transfer.files.length} 个文件 · ${formatBytes(transfer.totalSize)} · ${formatDate(transfer.expiresAt)} 过期`;
   elements.downloadList.replaceChildren();
 
@@ -551,16 +647,23 @@ function renderDownloads(transfer) {
     meta.className = "file-size";
     meta.textContent = file.uploaded ? formatBytes(file.size) : "等待上传";
     details.append(name, meta);
-    const download = document.createElement("a");
-    download.href = `/api/transfers/${encodeURIComponent(transfer.code)}/files/${file.id}`;
-    download.download = file.name;
-    download.textContent = file.uploaded ? "下载" : "等待中";
-    item.append(details, download);
+    const action = document.createElement(file.uploaded ? "a" : "span");
+    action.className = "download-action";
+    action.textContent = file.uploaded ? "下载" : "等待中";
+    action.setAttribute("aria-label", file.uploaded ? `下载 ${file.name}` : `${file.name} 等待上传`);
+    if (file.uploaded) {
+      action.href = `/api/transfers/${encodeURIComponent(transfer.code)}/files/${file.id}`;
+      action.download = file.name;
+    } else {
+      action.setAttribute("aria-disabled", "true");
+    }
+    item.append(details, action);
     elements.downloadList.append(item);
   }
 }
 
 function resetSender() {
+  transferNeedsCleanup = false;
   currentTransfer = null;
   files = [];
   elements.sendResult.hidden = true;
@@ -570,6 +673,7 @@ function resetSender() {
 }
 
 function resetReceiver() {
+  stopReceiveRefresh();
   elements.receiveResult.hidden = true;
   elements.receiveForm.hidden = false;
   elements.codeInput.value = "";
@@ -586,7 +690,10 @@ function clearFiles() {
 
 function openTextModal() {
   const peer = nearbyPeers.find((candidate) => candidate.id === selectedPeerId);
-  if (!peer) return;
+  if (!peer) {
+    showToast("目标设备已离线，请重新选择", true);
+    return;
+  }
   elements.textModalTitle.textContent = `发送文字给 ${peer.name}`;
   elements.textInput.value = "";
   showModal(elements.textModal, elements.textInput);
@@ -602,7 +709,16 @@ async function sendTextMessage(event) {
   event.preventDefault();
   const peer = nearbyPeers.find((candidate) => candidate.id === selectedPeerId);
   const text = elements.textInput.value;
-  if (!peer || !text.trim()) return;
+  if (!peer) {
+    closeTextModal();
+    showToast("目标设备已离线，请重新选择", true);
+    return;
+  }
+  if (!text.trim()) {
+    showToast("请输入要发送的文字", true);
+    elements.textInput.focus();
+    return;
+  }
   const button = elements.textForm.querySelector("button[type='submit']");
   button.disabled = true;
   try {
@@ -611,6 +727,11 @@ async function sendTextMessage(event) {
     showToast(`文字已发送给 ${peer.name}`);
     void playSound("success");
   } catch (error) {
+    if (error.code === "PEER_OFFLINE" || error.code === "PEER_NOT_FOUND") {
+      selectedPeerId = null;
+      closeTextModal();
+      renderPeers();
+    }
     showToast(error.message, true);
   } finally {
     button.disabled = false;
@@ -679,6 +800,7 @@ async function handleIncomingAction() {
   const code = incomingMessage.payload.code;
   dismissIncomingMessage();
   switchMode("receive");
+  resetReceiver();
   elements.codeInput.value = code;
   await lookupTransfer(code);
 }
@@ -754,8 +876,14 @@ function setLookupLoading(active) {
 }
 
 async function readResponse(response) {
+  setServerStatus("online");
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error?.message || "请求失败，请稍后重试");
+  if (!response.ok) {
+    const error = new Error(body.error?.message || "请求失败，请稍后重试");
+    error.status = response.status;
+    error.code = body.error?.code;
+    throw error;
+  }
   return body;
 }
 
@@ -853,7 +981,11 @@ function toggleSound() {
     // Sound still works for the current page when storage is unavailable.
   }
   updateSoundToggle();
-  if (soundEnabled) void playSound("confirm");
+  if (soundEnabled) {
+    void playSound("confirm");
+  } else if (audioContext?.state === "running") {
+    void audioContext.suspend().catch(() => {});
+  }
 }
 
 function updateSoundToggle() {

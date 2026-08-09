@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#13241d">
     <meta name="description" content="无需登录，在同一局域网的手机、平板和电脑之间传送文件或文字。">
     <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="./styles.css?v=0.2.0">
+    <link rel="stylesheet" href="./styles.css?v=0.2.1">
     <title>Hanazar Transfer — 跨设备文件传输</title>
   </head>
   <body>
@@ -126,7 +126,7 @@
                 </button>
               </form>
               <div class="receive-result" id="receive-result" hidden>
-                <div class="receive-summary"><span class="ready-icon">✓</span><div><b id="receive-title">文件可以下载</b><small id="receive-meta"></small></div></div>
+                <div class="receive-summary" role="status" aria-live="polite" aria-atomic="true"><span class="ready-icon" id="receive-icon">✓</span><div><b id="receive-title">文件可以下载</b><small id="receive-meta"></small></div></div>
                 <ul class="download-list" id="download-list"></ul>
                 <button class="text-button" id="lookup-another" type="button">← 输入另一个传输码</button>
               </div>
@@ -142,7 +142,7 @@
 
       <footer>
         <span>© 2026 HANAZAR</span>
-        <span>LOCAL FILE RELAY · V0.2.0</span>
+        <span>LOCAL FILE RELAY · V0.2.1</span>
       </footer>
     </div>
 
@@ -167,7 +167,7 @@
         <span class="step-label" id="incoming-kicker">收到新内容</span>
         <h2 id="incoming-title">附近设备发来文件</h2>
         <p class="incoming-from" id="incoming-from"></p>
-        <div class="incoming-content" id="incoming-content"></div>
+        <div class="incoming-content" id="incoming-content" aria-live="polite"></div>
         <div class="modal-actions">
           <button class="secondary-button" id="dismiss-incoming" type="button">忽略</button>
           <button class="primary-button" id="incoming-action" type="button">查看</button>
@@ -175,6 +175,6 @@
       </section>
     </div>
 
-    <script src="./app.js?v=0.2.0" type="module"></script>
+    <script src="./app.js?v=0.2.1" type="module"></script>
   </body>
 </html>

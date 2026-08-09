@@ -122,6 +122,16 @@ test("replaces unsafe media types with a download-safe default", async () => {
   });
 });
 
+test("preserves valid whitespace in file names", async () => {
+  await withStore(async (store) => {
+    const transfer = store.createTransfer([
+      { name: " report.txt ", size: 0, type: "text/plain" }
+    ]);
+
+    assert.equal(transfer.files[0].name, " report.txt ");
+  });
+});
+
 test("expires transfers and deletes their files", async () => {
   let now = 1_000;
   await withStore(

@@ -199,8 +199,8 @@ export class TransferStore {
     }
 
     const files = inputFiles.map((input) => {
-      const name = typeof input?.name === "string" ? input.name.trim() : "";
-      if (!name || name.length > 255 || /[\u0000-\u001f\u007f]/.test(name)) {
+      const name = typeof input?.name === "string" ? input.name : "";
+      if (!name.trim() || name.length > 255 || /[\u0000-\u001f\u007f]/.test(name)) {
         throw new TransferError(400, "文件名无效", "INVALID_FILE_NAME");
       }
       if (!Number.isSafeInteger(input.size) || input.size < 0) {

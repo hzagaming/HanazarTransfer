@@ -2,7 +2,7 @@
 
 一个无需公网服务器的局域网文件传输工具。局域网内的一台电脑运行本项目，其他手机、平板和电脑通过浏览器打开它的局域网地址，即可自动发现彼此并传送文件或文字。
 
-当前版本：`v0.2.0` · [查看版本公告](ANNOUNCEMENT.md) · [历史公告](docs/announcements/README.md)
+当前版本：`v0.2.1` · [查看版本公告](ANNOUNCEMENT.md) · [历史公告](docs/announcements/README.md)
 
 ## 已实现
 
