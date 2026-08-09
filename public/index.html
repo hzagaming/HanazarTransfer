@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#13241d">
     <meta name="description" content="无需登录，在同一局域网的手机、平板和电脑之间传送文件或文字。">
     <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="./styles.css?v=0.2.1">
+    <link rel="stylesheet" href="./styles.css?v=0.2.2">
     <title>Hanazar Transfer — 跨设备文件传输</title>
   </head>
   <body>
@@ -55,6 +55,10 @@
           </div>
 
           <div class="card-body">
+            <aside class="static-notice" id="static-notice" role="note" hidden>
+              <span aria-hidden="true">i</span>
+              <div><strong>GitHub Pages 展示模式</strong><p>此页面没有文件中转服务。请在局域网电脑运行 <code>npm start</code>，再打开终端显示的局域网地址。</p><a href="https://github.com/hzagaming/HanazarTransfer#本地运行">查看启动方法 →</a></div>
+            </aside>
             <section id="send-panel" role="tabpanel" aria-labelledby="send-tab">
               <div id="send-form-view">
                 <div class="panel-heading">
@@ -142,7 +146,7 @@
 
       <footer>
         <span>© 2026 HANAZAR</span>
-        <span>LOCAL FILE RELAY · V0.2.1</span>
+        <span>LOCAL FILE RELAY · V0.2.2</span>
       </footer>
     </div>
 
@@ -175,6 +179,6 @@
       </section>
     </div>
 
-    <script src="./app.js?v=0.2.1" type="module"></script>
+    <script src="./app.js?v=0.2.2" type="module"></script>
   </body>
 </html>

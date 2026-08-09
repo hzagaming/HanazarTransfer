@@ -33,6 +33,7 @@ const elements = {
   limitCopy: document.querySelector("#limit-copy"),
   ttlCopy: document.querySelector("#ttl-copy"),
   serverStatus: document.querySelector("#server-status"),
+  staticNotice: document.querySelector("#static-notice"),
   toast: document.querySelector("#toast"),
   peerList: document.querySelector("#peer-list"),
   peerStatus: document.querySelector("#peer-status"),
@@ -81,12 +82,17 @@ let activeReceiveSignature = null;
 const SOUND_STORAGE_KEY = "hanazar-sound";
 const MAX_INCOMING_QUEUE = 20;
 const RECEIVE_REFRESH_MS = 2_000;
+const staticDemo = location.hostname.endsWith(".github.io") || location.protocol === "file:";
 
 boot();
 
 async function boot() {
   restoreSoundPreference();
   bindEvents();
+  if (staticDemo) {
+    setupStaticDemo();
+    return;
+  }
   await Promise.all([loadConfig(), registerLocalPeer()]);
   const code = normalizeCode(new URL(location.href).searchParams.get("code"));
   if (code) {
@@ -133,7 +139,9 @@ function bindEvents() {
   elements.dismissIncoming.addEventListener("click", dismissIncomingMessage);
   elements.incomingAction.addEventListener("click", handleIncomingAction);
   document.addEventListener("keydown", handleDocumentKeydown);
-  window.addEventListener("beforeunload", handlePageExit);
+  window.addEventListener("pagehide", (event) => {
+    if (!event.persisted) handlePageExit();
+  });
 }
 
 async function loadConfig() {
@@ -145,6 +153,30 @@ async function loadConfig() {
   } catch {
     setServerStatus("offline");
   }
+  renderConfigLimits();
+}
+
+function setupStaticDemo() {
+  elements.pageShell.classList.add("static-demo");
+  elements.staticNotice.hidden = false;
+  setServerStatus("demo");
+  renderConfigLimits();
+  elements.peerStatus.textContent = "Pages 展示模式";
+  renderEmptyPeer("需要局域网服务", "在电脑运行 npm start 后打开局域网地址");
+  elements.fileInput.disabled = true;
+  elements.dropZone.setAttribute("aria-disabled", "true");
+  elements.dropZone.querySelector("strong").textContent = "请使用局域网地址";
+  elements.dropZone.querySelector("span:last-child").textContent = "GitHub Pages 不提供文件中转服务";
+  elements.sendButton.querySelector("span").textContent = "需连接局域网服务";
+  elements.sendButton.setAttribute("aria-label", "需连接局域网服务");
+  elements.codeInput.disabled = true;
+  elements.codeInput.placeholder = "仅展示";
+  elements.receiveButton.disabled = true;
+  elements.receiveButton.querySelector("span").textContent = "需连接局域网服务";
+  elements.receiveButton.setAttribute("aria-label", "需连接局域网服务");
+}
+
+function renderConfigLimits() {
   elements.limitCopy.textContent = `最多 ${config.maxFiles} 个 · 总计 ${formatBytes(config.maxTransferBytes)}`;
   elements.ttlCopy.textContent = `文件将在 ${formatDuration(config.ttlMs)}后清除`;
 }
@@ -216,7 +248,8 @@ function setServerStatus(state) {
   const labels = {
     online: "服务在线",
     offline: "服务离线",
-    connecting: "服务重连中"
+    connecting: "服务重连中",
+    demo: "展示模式"
   };
   elements.serverStatus.className = `server-status ${state}`;
   elements.serverStatus.lastElementChild.textContent = labels[state];
@@ -229,18 +262,7 @@ function renderPeers() {
   elements.peerStatus.textContent = nearbyPeers.length ? `${nearbyPeers.length} 台设备在线` : "未发现其他设备";
 
   if (!nearbyPeers.length) {
-    const empty = document.createElement("div");
-    empty.className = "peer-empty";
-    const radar = document.createElement("span");
-    radar.className = "peer-radar";
-    const copy = document.createElement("p");
-    const title = document.createElement("b");
-    title.textContent = "等待其他设备";
-    const hint = document.createElement("small");
-    hint.textContent = "让其他设备打开这个局域网网址";
-    copy.append(title, hint);
-    empty.append(radar, copy);
-    elements.peerList.append(empty);
+    renderEmptyPeer("等待其他设备", "让其他设备打开这个局域网网址");
   } else {
     for (const peer of nearbyPeers) elements.peerList.append(createPeerButton(peer));
   }
@@ -249,6 +271,23 @@ function renderPeers() {
   elements.peerActions.hidden = !current;
   if (current) elements.selectedPeerName.textContent = current.name;
   updateSendButtonLabel();
+}
+
+function renderEmptyPeer(titleText, hintText) {
+  elements.peerList.replaceChildren();
+  const empty = document.createElement("div");
+  empty.className = "peer-empty";
+  const radar = document.createElement("span");
+  radar.className = "peer-radar";
+  radar.setAttribute("aria-hidden", "true");
+  const copy = document.createElement("p");
+  const title = document.createElement("b");
+  title.textContent = titleText;
+  const hint = document.createElement("small");
+  hint.textContent = hintText;
+  copy.append(title, hint);
+  empty.append(radar, copy);
+  elements.peerList.append(empty);
 }
 
 function createPeerButton(peer) {
@@ -310,11 +349,15 @@ function detectDeviceName() {
 
 function disconnectLocalPeer() {
   clearTimeout(reconnectTimer);
+  reconnectTimer = null;
   eventSource?.close();
-  if (!peerSession) return;
-  void fetch(`/api/peers/${peerSession.id}`, {
+  eventSource = null;
+  const session = peerSession;
+  peerSession = null;
+  if (!session) return;
+  void fetch(`/api/peers/${session.id}`, {
     method: "DELETE",
-    headers: { "x-peer-token": peerSession.token },
+    headers: { "x-peer-token": session.token },
     keepalive: true
   }).catch(() => {});
 }
@@ -358,6 +401,7 @@ function handleTabKeydown(event) {
 }
 
 function addFiles(fileList) {
+  if (staticDemo) return;
   const incoming = Array.from(fileList);
   if (!incoming.length) return;
   const merged = [...files];
@@ -454,7 +498,7 @@ async function sendFiles() {
         await sendPeerMessage(targetPeer.id, "transfer", { code: currentTransfer.code });
         showToast(`已通知 ${targetPeer.name}`);
       } catch (error) {
-        showToast(`${error.message}，请改用传输码`, true);
+        showToast(`${userErrorMessage(error)}，请改用传输码`, true);
       }
     }
     showSendResult(currentTransfer, targetPeer);
@@ -465,7 +509,7 @@ async function sendFiles() {
     if (currentTransfer) await discardTransfer(currentTransfer);
     transferNeedsCleanup = false;
     currentTransfer = null;
-    showToast(cancelled ? "上传已取消" : error.message, !cancelled);
+    showToast(cancelled ? "上传已取消" : userErrorMessage(error), !cancelled);
     setSending(false);
     renderSelectedFiles();
   } finally {
@@ -570,7 +614,7 @@ async function lookupTransfer(inputCode) {
     url.searchParams.set("code", code);
     history.replaceState(null, "", url);
   } catch (error) {
-    if (generation === receiveRefreshGeneration) showToast(error.message, true);
+    if (generation === receiveRefreshGeneration) showToast(userErrorMessage(error), true);
   } finally {
     if (generation === receiveRefreshGeneration) setLookupLoading(false);
   }
@@ -732,7 +776,7 @@ async function sendTextMessage(event) {
       closeTextModal();
       renderPeers();
     }
-    showToast(error.message, true);
+    showToast(userErrorMessage(error), true);
   } finally {
     button.disabled = false;
   }
@@ -791,9 +835,13 @@ function dismissIncomingMessage() {
 async function handleIncomingAction() {
   if (!incomingMessage) return;
   if (incomingMessage.type === "text") {
-    await copyText(incomingMessage.payload.text);
-    showToast("文字已复制");
-    dismissIncomingMessage();
+    try {
+      await copyText(incomingMessage.payload.text);
+      showToast("文字已复制");
+      dismissIncomingMessage();
+    } catch (error) {
+      showToast(userErrorMessage(error, "复制失败，请手动选择文字"), true);
+    }
     return;
   }
 
@@ -806,8 +854,12 @@ async function handleIncomingAction() {
 }
 
 async function copyShareLink() {
-  await copyText(elements.shareLink.value, elements.shareLink);
-  showToast("分享链接已复制");
+  try {
+    await copyText(elements.shareLink.value, elements.shareLink);
+    showToast("分享链接已复制");
+  } catch (error) {
+    showToast(userErrorMessage(error, "复制失败，请手动复制链接"), true);
+  }
 }
 
 async function copyText(text, fallbackInput) {
@@ -820,9 +872,12 @@ async function copyText(text, fallbackInput) {
       input.className = "clipboard-helper";
       document.body.append(input);
     }
-    input.select();
-    document.execCommand("copy");
-    if (!fallbackInput) input.remove();
+    try {
+      input.select();
+      if (!document.execCommand("copy")) throw new Error("复制失败，请手动复制");
+    } finally {
+      if (!fallbackInput) input.remove();
+    }
   }
 }
 
@@ -893,6 +948,11 @@ function parseError(value) {
   } catch {
     return "上传失败，请重试";
   }
+}
+
+function userErrorMessage(error, fallback = "网络中断，请稍后重试") {
+  if (error instanceof TypeError || error?.message === "Failed to fetch") return fallback;
+  return error?.message || fallback;
 }
 
 function parseEventData(value) {
@@ -1059,7 +1119,14 @@ function formatDate(value) {
 
 function showToast(message, isError = false) {
   clearTimeout(toastTimer);
+  elements.toast.className = "toast";
+  elements.toast.textContent = "";
+  elements.toast.setAttribute("role", isError ? "alert" : "status");
+  elements.toast.setAttribute("aria-live", isError ? "assertive" : "polite");
   elements.toast.textContent = message;
   elements.toast.className = `toast show${isError ? " error" : ""}`;
-  toastTimer = setTimeout(() => { elements.toast.className = "toast"; }, 2600);
+  toastTimer = setTimeout(() => {
+    elements.toast.className = "toast";
+    elements.toast.textContent = "";
+  }, 2600);
 }
