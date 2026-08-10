@@ -1,0 +1,95 @@
+.p2p-page [hidden] { display: none; }
+.p2p-layout { grid-template-columns: minmax(340px, 0.72fr) minmax(540px, 1fr); align-items: start; }
+.p2p-page .intro { position: sticky; top: 120px; padding-top: 44px; }
+.p2p-page h1 { font-size: clamp(64px, 5.5vw, 86px); }
+.p2p-card { overflow: hidden; }
+.p2p-card-head { min-height: 76px; padding: 0 28px; display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); background: #f4f2eb; }
+.p2p-card-head > div { display: flex; flex-direction: column; gap: 3px; }
+.p2p-card-head strong { font-size: 13px; }
+.p2p-card-icon { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: var(--green); font-size: 18px; font-weight: 800; }
+.p2p-state-copy { color: var(--muted); font-size: 10px; font-weight: 750; }
+.p2p-card-body { min-height: 0; }
+.p2p-heading { margin-bottom: 14px; }
+.p2p-help { margin: 0 0 20px; color: var(--muted); font-size: 11px; line-height: 1.7; }
+.p2p-alert { margin-bottom: 16px; padding: 11px 13px; border: 1px solid #b9cfbf; border-radius: 9px; color: #2e6947; background: #f0f8f2; font-size: 10px; line-height: 1.55; }
+.p2p-alert.error { border-color: #dfb5aa; color: #8d3022; background: #fff2ef; }
+.p2p-role-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.p2p-role-button { min-height: 116px; border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 5px; color: var(--ink); background: #faf9f4; cursor: pointer; text-align: left; transition: border-color 150ms, background 150ms, transform 150ms; }
+.p2p-role-button:hover { border-color: var(--orange); background: #fff8f3; transform: translateY(-1px); }
+.p2p-role-button > span { color: var(--orange); font-size: 24px; line-height: 1; }
+.p2p-role-button b { font-size: 13px; }
+.p2p-role-button small { color: var(--muted); font-size: 9px; }
+.p2p-flow { display: grid; gap: 9px; }
+.p2p-flow form { display: grid; gap: 9px; }
+.p2p-flow-title { margin-top: 16px; display: flex; align-items: center; gap: 10px; }
+.p2p-flow-title > span { width: 26px; height: 26px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center; color: #fff; background: var(--orange); font-size: 10px; font-weight: 850; }
+.p2p-flow-title > div { display: flex; flex-direction: column; gap: 2px; }
+.p2p-flow-title b { font-size: 11px; }
+.p2p-flow-title small { color: var(--muted); font-size: 9px; }
+.p2p-flow label { color: var(--muted); font-size: 10px; font-weight: 750; }
+.p2p-flow textarea, .p2p-text-form textarea { width: 100%; resize: vertical; border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; outline: 0; color: var(--ink); background: #faf9f5; line-height: 1.5; }
+.p2p-flow textarea { min-height: 88px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; overflow-wrap: anywhere; }
+.p2p-flow textarea:focus, .p2p-text-form textarea:focus { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(191, 63, 28, 0.1); }
+.p2p-signal-output { color: #3f6550 !important; background: #f1f7f2 !important; }
+.p2p-inline-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.p2p-inline-actions .secondary-button { min-height: 42px; }
+.p2p-flow .primary-button { margin-top: 6px; }
+.p2p-reset { min-height: 34px; }
+.p2p-connection-banner { margin-bottom: 24px; padding: 13px 14px; border: 1px solid #b9cfbf; border-radius: 12px; display: flex; align-items: center; gap: 10px; background: #f0f8f2; }
+.p2p-connection-banner > span { width: 28px; height: 28px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center; color: #fff; background: #459563; font-weight: 850; }
+.p2p-connection-banner > div { display: flex; flex-direction: column; gap: 3px; }
+.p2p-connection-banner b { font-size: 12px; }
+.p2p-connection-banner small { color: #397552; font-size: 9px; }
+.p2p-connection-banner.disconnected { border-color: #dfc59b; background: #fff8e9; }
+.p2p-connection-banner.disconnected > span { background: #a8762b; }
+.p2p-connection-banner.disconnected small { color: #7c5a25; }
+.p2p-file-heading { margin-top: 0; }
+.p2p-drop-zone { min-height: 126px; }
+.p2p-progress { margin-top: 16px; }
+.p2p-progress > div { margin-bottom: 7px; display: flex; justify-content: space-between; color: var(--muted); font-size: 10px; }
+.p2p-progress > div b { color: var(--orange); }
+.p2p-progress > span { height: 6px; border-radius: 3px; display: block; overflow: hidden; background: #e7e5dc; }
+.p2p-progress > span i { width: 0; height: 100%; display: block; border-radius: inherit; background: var(--orange); transition: width 120ms linear; }
+.p2p-progress.incoming > span i { background: var(--green); }
+.p2p-progress.incoming > div b { color: var(--green); }
+.p2p-text-form { margin-top: 28px; padding-top: 23px; border-top: 1px solid var(--line); display: grid; gap: 9px; }
+.p2p-text-form label { color: var(--ink); font-size: 11px; font-weight: 750; }
+.p2p-text-form textarea { min-height: 78px; font-size: 12px; }
+.p2p-text-form .secondary-button { min-height: 42px; }
+.p2p-activity-heading { margin-top: 28px; padding-bottom: 10px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: end; }
+.p2p-activity-heading h3 { margin: 3px 0 0; font-size: 14px; }
+.p2p-activity-heading button { min-height: 30px; border: 0; color: var(--orange); background: transparent; cursor: pointer; font-size: 10px; font-weight: 750; }
+.p2p-activity-empty { margin: 18px 0 2px; color: var(--muted); font-size: 10px; text-align: center; }
+.p2p-activity-list { max-height: 260px; margin: 0; padding: 0; overflow: auto; list-style: none; }
+.p2p-activity-item { min-height: 62px; padding: 9px 0; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.p2p-activity-icon { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; color: var(--green); background: var(--green-light); font-size: 9px; font-weight: 850; }
+.p2p-activity-item.outgoing .p2p-activity-icon { color: var(--orange); background: #fff0e9; }
+.p2p-activity-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.p2p-activity-copy b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.p2p-activity-copy small { color: var(--muted); font-size: 9px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.p2p-activity-action { min-height: 34px; border: 0; border-radius: 7px; padding: 0 12px; display: inline-flex; align-items: center; color: #fff; background: var(--green); cursor: pointer; text-decoration: none; font-size: 10px; font-weight: 750; }
+.p2p-activity-action.delivered { color: var(--muted); background: #efeee8; cursor: default; }
+.p2p-disconnect { width: 100%; min-height: 38px; margin-top: 20px; }
+.p2p-page .file-list-header button:disabled, .p2p-page .remove-file:disabled { cursor: not-allowed; opacity: 0.4; }
+.p2p-status.connected .status-dot { background: #45a36b; box-shadow: 0 0 0 4px rgba(69, 163, 107, 0.14); }
+.p2p-status.connecting .status-dot, .p2p-status.waiting .status-dot { background: #c18a33; box-shadow: 0 0 0 4px rgba(193, 138, 51, 0.14); }
+.p2p-status.error .status-dot { background: #c84835; box-shadow: 0 0 0 4px rgba(200, 72, 53, 0.14); }
+
+@media (max-width: 960px) {
+  .p2p-layout { grid-template-columns: 1fr; }
+  .p2p-page .intro { position: static; padding-top: 0; }
+}
+
+@media (max-width: 560px) {
+  .p2p-card-head { min-height: 68px; padding: 0 18px; grid-template-columns: 34px minmax(0, 1fr); }
+  .p2p-card-icon { width: 32px; height: 32px; }
+  .p2p-state-copy { grid-column: 2; margin-top: -16px; }
+  .p2p-role-grid { grid-template-columns: 1fr; }
+  .p2p-role-button { min-height: 88px; }
+  .p2p-inline-actions { grid-template-columns: 1fr; }
+  .p2p-inline-actions .secondary-button { min-height: 46px; }
+  .p2p-card-body { padding-inline: 18px; }
+  .p2p-heading { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .p2p-heading .limit-copy { max-width: none; margin: 0; text-align: left; }
+  .p2p-activity-item { grid-template-columns: 30px minmax(0, 1fr) auto; gap: 8px; }
+}

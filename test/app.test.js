@@ -38,6 +38,12 @@ test("serves the web app and public configuration", async () => {
     const script = await fetch(`${origin}/app.js`);
     assert.equal(script.headers.get("cache-control"), "no-cache");
 
+    const p2pPage = await fetch(`${origin}/p2p.html`);
+    assert.equal(p2pPage.status, 200);
+    assert.match(await p2pPage.text(), /P2P 直传/);
+    assert.equal((await fetch(`${origin}/p2p.js`)).status, 200);
+    assert.equal((await fetch(`${origin}/p2p.css`)).status, 200);
+
     const config = await fetch(`${origin}/api/config`).then((response) => response.json());
     assert.deepEqual(config, { maxTransferBytes: 1024, maxFiles: 3, ttlMs: 86_400_000 });
   });

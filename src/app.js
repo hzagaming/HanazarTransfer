@@ -10,6 +10,9 @@ const STATIC_FILES = new Map([
   ["/", "index.html"],
   ["/index.html", "index.html"],
   ["/app.js", "app.js"],
+  ["/p2p.html", "p2p.html"],
+  ["/p2p.js", "p2p.js"],
+  ["/p2p.css", "p2p.css"],
   ["/styles.css", "styles.css"],
   ["/favicon.svg", "favicon.svg"]
 ]);

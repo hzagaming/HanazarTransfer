@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#13241d">
-    <meta name="description" content="无需登录，在同一局域网的手机、平板和电脑之间传送文件或文字。">
+    <meta name="description" content="无需登录，通过浏览器 P2P 直传或局域网服务在手机、平板和电脑之间传送文件与文字。">
     <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="./styles.css?v=0.2.2">
+    <link rel="stylesheet" href="./styles.css?v=0.3.0">
     <title>Hanazar Transfer — 跨设备文件传输</title>
   </head>
   <body>
@@ -34,7 +34,7 @@
         <section class="intro" aria-labelledby="page-title">
           <div class="eyebrow"><span></span>无需账号 · 即开即传</div>
           <h1 id="page-title">文件，从这里<br><em>抵达。</em></h1>
-          <p class="intro-copy">选择附近设备，发送文件或文字。<br>没有发现设备时，也可使用传输码。</p>
+          <p class="intro-copy">选择附近设备，发送文件或文字。<br>没有局域网服务时，也可使用 P2P 直传。</p>
           <div class="feature-list" aria-label="产品特点">
             <div><span>01</span><p><b>无需登录</b><small>打开网页就能使用</small></p></div>
             <div><span>02</span><p><b>自动销毁</b><small id="ttl-copy">文件将在 24 小时后清除</small></p></div>
@@ -57,7 +57,7 @@
           <div class="card-body">
             <aside class="static-notice" id="static-notice" role="note" hidden>
               <span aria-hidden="true">i</span>
-              <div><strong>GitHub Pages 展示模式</strong><p>此页面没有文件中转服务。请在局域网电脑运行 <code>npm start</code>，再打开终端显示的局域网地址。</p><a href="https://github.com/hzagaming/HanazarTransfer#本地运行">查看启动方法 →</a></div>
+              <div><strong>GitHub Pages 支持 P2P 直传</strong><p>无需服务器，交换邀请与回复后即可在两台设备间加密传文件。</p><a href="./p2p.html">打开 P2P 直传 →</a></div>
             </aside>
             <section id="send-panel" role="tabpanel" aria-labelledby="send-tab">
               <div id="send-form-view">
@@ -146,7 +146,7 @@
 
       <footer>
         <span>© 2026 HANAZAR</span>
-        <span>LOCAL FILE RELAY · V0.2.2</span>
+        <span>LOCAL FILE RELAY · V0.3.0</span>
       </footer>
     </div>
 
@@ -179,6 +179,6 @@
       </section>
     </div>
 
-    <script src="./app.js?v=0.2.2" type="module"></script>
+    <script src="./app.js?v=0.3.0" type="module"></script>
   </body>
 </html>

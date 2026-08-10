@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#13241d">
+    <meta name="description" content="无需服务器，通过 WebRTC 在两台设备之间点对点传送文件和文字。">
+    <meta name="referrer" content="no-referrer">
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="./styles.css?v=0.3.0">
+    <link rel="stylesheet" href="./p2p.css?v=0.3.0">
+    <title>Hanazar Transfer — P2P 直传</title>
+  </head>
+  <body class="p2p-page">
+    <div class="page-shell">
+      <header class="site-header">
+        <a class="brand" href="./" aria-label="返回 Hanazar Transfer 首页">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 36 36"><path d="M8 11.5h12.5M15 5l6.5 6.5L15 18M28 24.5H15.5M21 18l-6.5 6.5L21 31"/></svg>
+          </span>
+          <span>HANAZAR <b>TRANSFER</b></span>
+        </a>
+        <div class="header-actions">
+          <button class="sound-toggle" id="p2p-sound-toggle" type="button" aria-label="开启提示音" aria-pressed="false" title="开启提示音">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 10v4h3l4 3V7L8 10H5"/><path class="sound-waves" d="M16 8.5a5 5 0 010 7M18.5 6a8.5 8.5 0 010 12"/><path class="sound-muted" d="M16 9l5 6m0-6l-5 6"/></svg>
+            <span id="p2p-sound-label">提示音关</span>
+          </button>
+          <div class="server-status p2p-status idle" id="p2p-header-status" role="status">
+            <span class="status-dot"></span><span>等待配对</span>
+          </div>
+        </div>
+      </header>
+
+      <main class="main-layout p2p-layout">
+        <section class="intro" aria-labelledby="page-title">
+          <div class="eyebrow"><span></span>纯前端 · 设备直连</div>
+          <h1 id="page-title">不经过<br><em>服务器。</em></h1>
+          <p class="intro-copy">交换一次邀请和回复，文件便会在两台设备间加密直传。<br>不上传、不留存，也不需要账号。</p>
+          <div class="feature-list" aria-label="P2P 直传特点">
+            <div><span>01</span><p><b>端到端加密</b><small>WebRTC DTLS 传输</small></p></div>
+            <div><span>02</span><p><b>文件不落地</b><small>仅在两台设备间流动</small></p></div>
+            <div><span>03</span><p><b>静态可部署</b><small>GitHub Pages 可直接使用</small></p></div>
+          </div>
+        </section>
+
+        <section class="transfer-card p2p-card" aria-label="P2P 文件直传工具">
+          <div class="p2p-card-head">
+            <span class="p2p-card-icon" aria-hidden="true">↔</span>
+            <div><span class="step-label">P2P DIRECT</span><strong>浏览器点对点直传</strong></div>
+            <span class="p2p-state-copy" id="p2p-state-copy" aria-live="polite">等待配对</span>
+          </div>
+
+          <div class="card-body p2p-card-body">
+            <section id="p2p-setup" aria-labelledby="p2p-setup-title">
+              <div class="panel-heading p2p-heading">
+                <div><span class="step-label">STEP 01</span><h2 id="p2p-setup-title">连接另一台设备</h2></div>
+                <span class="limit-copy">同一 Wi-Fi 成功率最高</span>
+              </div>
+
+              <div class="p2p-alert error" id="p2p-unsupported" role="alert" hidden>
+                当前浏览器不支持 WebRTC DataChannel，请升级 Safari、Chrome、Edge 或 Firefox。
+              </div>
+              <div class="p2p-alert" id="p2p-imported" role="status" hidden>
+                已从邀请链接读取连接信息，请点击“生成回复码”。
+              </div>
+              <p class="p2p-help">无需中转服务器。发起设备分享邀请链接，加入设备再把回复码发回来即可。</p>
+
+              <div class="p2p-role-grid" id="p2p-role-actions">
+                <button class="p2p-role-button" id="p2p-create" type="button">
+                  <span aria-hidden="true">＋</span><b>发起连接</b><small>生成邀请链接</small>
+                </button>
+                <button class="p2p-role-button" id="p2p-join" type="button">
+                  <span aria-hidden="true">→</span><b>加入连接</b><small>粘贴对方邀请</small>
+                </button>
+              </div>
+
+              <section class="p2p-flow" id="p2p-host-flow" aria-labelledby="p2p-host-title" hidden>
+                <div class="p2p-flow-title"><span>1</span><div><b id="p2p-host-title">把邀请链接发给另一台设备</b><small>链接片段不会发送给 GitHub Pages</small></div></div>
+                <label for="p2p-invite-output">邀请链接</label>
+                <textarea class="p2p-signal-output" id="p2p-invite-output" rows="4" readonly></textarea>
+                <div class="p2p-inline-actions">
+                  <button class="secondary-button" id="p2p-copy-invite" type="button">复制邀请</button>
+                  <button class="secondary-button" id="p2p-share-invite" type="button">分享邀请</button>
+                </div>
+                <form id="p2p-host-answer-form">
+                  <div class="p2p-flow-title"><span>2</span><div><b>粘贴对方生成的回复码</b><small>完成后等待设备直连</small></div></div>
+                  <label for="p2p-host-answer-input">回复码</label>
+                  <textarea id="p2p-host-answer-input" rows="4" maxlength="200000" autocomplete="off" spellcheck="false" placeholder="HT1.…" required></textarea>
+                  <button class="primary-button" id="p2p-apply-answer" type="submit"><span>完成连接</span></button>
+                </form>
+              </section>
+
+              <section class="p2p-flow" id="p2p-join-flow" aria-labelledby="p2p-join-title" hidden>
+                <form id="p2p-join-form">
+                  <div class="p2p-flow-title"><span>1</span><div><b id="p2p-join-title">粘贴发起设备的邀请</b><small>可以粘贴完整链接或 HT1 连接码</small></div></div>
+                  <label for="p2p-invite-input">邀请链接或连接码</label>
+                  <textarea id="p2p-invite-input" rows="5" maxlength="200000" autocomplete="off" spellcheck="false" placeholder="https://…#p2p=HT1.…" required></textarea>
+                  <button class="primary-button" id="p2p-generate-answer" type="submit"><span>生成回复码</span></button>
+                </form>
+                <div id="p2p-answer-output-wrap" hidden>
+                  <div class="p2p-flow-title"><span>2</span><div><b>把回复码发回发起设备</b><small>对方粘贴后会自动建立连接</small></div></div>
+                  <label for="p2p-answer-output">回复码</label>
+                  <textarea class="p2p-signal-output" id="p2p-answer-output" rows="4" readonly></textarea>
+                  <div class="p2p-inline-actions">
+                    <button class="secondary-button" id="p2p-copy-answer" type="button">复制回复码</button>
+                    <button class="secondary-button" id="p2p-share-answer" type="button">分享回复码</button>
+                  </div>
+                </div>
+              </section>
+
+              <button class="text-button p2p-reset" id="p2p-reset" type="button" hidden>← 重新选择连接方式</button>
+            </section>
+
+            <section id="p2p-workspace" aria-labelledby="p2p-workspace-title" hidden>
+              <div class="p2p-connection-banner" id="p2p-connection-banner" role="status" aria-live="polite">
+                <span aria-hidden="true">✓</span><div><b id="p2p-workspace-title">设备已直连</b><small id="p2p-remote-name">另一台设备在线</small></div>
+              </div>
+
+              <div class="file-step-heading p2p-file-heading">
+                <div><span class="step-label">FILES</span><h3>发送文件</h3></div>
+                <span class="limit-copy">最多 20 个 · 总计 512 MB</span>
+              </div>
+              <label class="drop-zone p2p-drop-zone" id="p2p-drop-zone" aria-disabled="true">
+                <input id="p2p-file-input" type="file" multiple disabled>
+                <span class="drop-icon" aria-hidden="true">
+                  <svg viewBox="0 0 32 32"><path d="M16 21V7m0 0l-5 5m5-5l5 5M7 20v3a3 3 0 003 3h12a3 3 0 003-3v-3"/></svg>
+                </span>
+                <strong>拖放文件到这里</strong><span>或者 <u>浏览设备</u> 选择文件</span>
+              </label>
+              <div class="selected-files" id="p2p-selected-files" hidden>
+                <div class="file-list-header"><span>待发送</span><button id="p2p-clear-files" type="button">全部清除</button></div>
+                <ul class="file-list" id="p2p-file-list"></ul>
+              </div>
+
+              <div class="p2p-progress" id="p2p-send-progress" role="progressbar" aria-label="文件发送进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
+                <div><span id="p2p-send-progress-label">准备发送</span><b id="p2p-send-progress-value">0%</b></div><span><i></i></span>
+              </div>
+              <button class="primary-button" id="p2p-send-files" type="button" disabled><span>发送所选文件</span></button>
+              <button class="text-button upload-cancel" id="p2p-cancel-send" type="button" hidden>取消本次发送</button>
+
+              <div class="p2p-progress incoming" id="p2p-receive-progress" role="progressbar" aria-label="文件接收进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
+                <div><span id="p2p-receive-progress-label">正在接收</span><b id="p2p-receive-progress-value">0%</b></div><span><i></i></span>
+              </div>
+
+              <form class="p2p-text-form" id="p2p-text-form">
+                <label for="p2p-text-input"><span class="step-label">TEXT</span> 发送文字</label>
+                <textarea id="p2p-text-input" maxlength="10000" rows="3" placeholder="输入链接、文字或临时信息…" disabled></textarea>
+                <button class="secondary-button" id="p2p-send-text" type="submit" disabled>发送文字</button>
+              </form>
+
+              <div class="p2p-activity-heading"><div><span class="step-label">ACTIVITY</span><h3>传输记录</h3></div><button id="p2p-clear-activity" type="button" hidden>清空记录</button></div>
+              <p class="p2p-activity-empty" id="p2p-activity-empty">收到的文件和文字会显示在这里</p>
+              <ul class="p2p-activity-list" id="p2p-activity-list"></ul>
+              <button class="text-button p2p-disconnect" id="p2p-disconnect" type="button">断开当前连接</button>
+            </section>
+          </div>
+
+          <div class="card-footnote">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.6-2.8 8-7 10-4.2-2-7-5.4-7-10V6l7-3zm-3 9l2 2 4-4"/></svg>
+            文件通过 WebRTC DTLS 加密直传；邀请与回复只应发送给接收方
+          </div>
+        </section>
+      </main>
+
+      <footer><span>© 2026 HANAZAR</span><span>P2P DIRECT TRANSFER · V0.3.0</span></footer>
+    </div>
+    <div class="toast" id="p2p-toast" role="status" aria-live="polite"></div>
+    <script src="./p2p.js?v=0.3.0" type="module"></script>
+  </body>
+</html>

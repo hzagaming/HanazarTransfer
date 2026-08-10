@@ -1,8 +1,8 @@
 # Hanazar Transfer
 
-一个无需公网服务器的局域网文件传输工具。局域网内的一台电脑运行本项目，其他手机、平板和电脑通过浏览器打开它的局域网地址，即可自动发现彼此并传送文件或文字。
+一个无需账号的跨设备文件传输工具。可以直接使用 GitHub Pages 在两个现代浏览器之间进行 WebRTC 加密直传，也可以在局域网电脑运行 Node.js 服务，自动发现设备并中转文件或文字。
 
-当前版本：`v0.2.2` · [查看版本公告](ANNOUNCEMENT.md) · [历史公告](docs/announcements/README.md)
+当前版本：`v0.3.0` · [查看版本公告](ANNOUNCEMENT.md) · [历史公告](docs/announcements/README.md)
 
 ## 已实现
 
@@ -12,6 +12,9 @@
 - 多文件选择、拖放上传和逐文件进度
 - 支持取消上传，并自动清理未完成传输
 - 可选的发送与接收提示音，默认关闭
+- GitHub Pages 纯前端 P2P 直传，无需部署后端或注册账号
+- 手动邀请与回复配对，不把连接信息写入服务器
+- WebRTC DataChannel 双向传送文件和文字，支持进度、取消和下载记录
 - 8 位易读传输码与一键分享链接
 - 流式上传和下载，不把完整文件读入服务端内存
 - 独立上传令牌，传输码只授予读取权限
@@ -20,7 +23,19 @@
 - CSP 等基础安全响应头和结构化 API 错误
 - 零运行时依赖，仅需 Node.js 22+
 
-## 本地运行
+## GitHub Pages P2P 直传
+
+打开 [Hanazar Transfer](https://hzagaming.github.io/HanazarTransfer/)，点击“打开 P2P 直传”，然后：
+
+1. 一台设备选择“发起连接”，把邀请链接发给另一台设备。
+2. 另一台设备打开链接并生成回复码，再把回复码发回。
+3. 发起设备粘贴回复码并完成连接，双方都可以发送文件或文字。
+
+该模式完全在浏览器前端运行，不请求 Hanazar Transfer API。文件通过 WebRTC DataChannel 的 DTLS 加密连接直达对方，不上传到 GitHub Pages，也不会保存在仓库。单批最多 20 个文件、总计 512 MB；接收页面需要保持打开，下载记录只在当前标签页内保留。
+
+由于没有信令服务器、STUN 或 TURN，纯前端版本不能像 Snapdrop 一样自动发现设备，也不能保证跨网络或启用了客户端隔离的 Wi-Fi 可连接。同一局域网成功率最高；若直连失败，请改用下面的本地服务模式。
+
+## 局域网服务模式
 
 ```bash
 npm test
@@ -44,7 +59,7 @@ Hanazar Transfer is ready:
 - 允许 Node.js 通过 Windows/macOS 防火墙
 - 关闭手机或电脑上的 VPN、代理后重试
 - 确认路由器没有启用 AP Isolation、访客网络隔离或客户端隔离
-- 不要打开 GitHub Pages 地址；设备应直接打开局域网电脑显示的 IP 地址
+- 若不方便运行服务，可在 GitHub Pages 首页改用 P2P 直传
 
 ## Docker
 
@@ -52,10 +67,6 @@ Hanazar Transfer is ready:
 docker build -t hanazar-transfer .
 docker run --rm -p 3000:3000 hanazar-transfer
 ```
-
-## GitHub Pages 限制
-
-GitHub Pages 只能发布静态页面，不能运行设备发现、事件流和文件中转接口。因此 `https://hzagaming.github.io/HanazarTransfer/` 可以作为项目介绍页，但不能替代局域网电脑上运行的 Node.js 服务。
 
 ## 可选公网部署
 
@@ -94,4 +105,4 @@ npm start
 
 ## 安全模型
 
-传输码相当于下载凭证，请只分享给接收方。文件会经过运行本项目的局域网电脑，但不会上传到第三方服务。若将端口暴露到公网，必须启用 HTTPS、访问控制、IP 限流、磁盘配额和恶意文件检测。
+P2P 模式的邀请链接和回复码包含临时连接信息，只应发送给目标设备；文件不经过 Hanazar Transfer 服务。局域网服务模式的传输码相当于下载凭证，文件会经过运行本项目的电脑，但不会上传到第三方服务。若将服务端口暴露到公网，必须启用 HTTPS、访问控制、IP 限流、磁盘配额和恶意文件检测。

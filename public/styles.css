@@ -82,7 +82,7 @@ body.modal-open { overflow: hidden; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #c1a66f; box-shadow: 0 0 0 4px rgba(193, 166, 111, 0.15); }
 .server-status.online .status-dot { background: #45a36b; box-shadow: 0 0 0 4px rgba(69, 163, 107, 0.14); }
 .server-status.offline .status-dot { background: #c84835; box-shadow: 0 0 0 4px rgba(200, 72, 53, 0.14); }
-.server-status.demo .status-dot { background: #b47a23; box-shadow: 0 0 0 4px rgba(180, 122, 35, 0.14); }
+.server-status.p2p .status-dot { background: #45a36b; box-shadow: 0 0 0 4px rgba(69, 163, 107, 0.14); }
 
 .main-layout {
   flex: 1;
@@ -213,6 +213,7 @@ h2 { margin: 5px 0 0; font-size: 20px; letter-spacing: -0.025em; }
 .selected-files { margin-top: 17px; }
 .file-list-header { display: flex; justify-content: space-between; margin-bottom: 8px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .file-list-header button, .text-button { border: 0; padding: 0; color: var(--orange); background: transparent; cursor: pointer; font-size: 11px; font-weight: 700; }
+.file-list-header button { min-height: 28px; padding: 4px; margin: -4px; }
 .file-list, .download-list { list-style: none; margin: 0; padding: 0; }
 .file-list { max-height: 116px; overflow: auto; border-top: 1px solid var(--line); }
 .file-item { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto 32px; gap: 10px; align-items: center; min-height: 56px; border-bottom: 1px solid var(--line); }

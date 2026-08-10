@@ -159,10 +159,10 @@ async function loadConfig() {
 function setupStaticDemo() {
   elements.pageShell.classList.add("static-demo");
   elements.staticNotice.hidden = false;
-  setServerStatus("demo");
+  setServerStatus("p2p");
   renderConfigLimits();
-  elements.peerStatus.textContent = "Pages 展示模式";
-  renderEmptyPeer("需要局域网服务", "在电脑运行 npm start 后打开局域网地址");
+  elements.peerStatus.textContent = "局域网服务未启动";
+  renderEmptyPeer("可使用 P2P 直传", "点击上方入口，无需运行服务器");
   elements.fileInput.disabled = true;
   elements.dropZone.setAttribute("aria-disabled", "true");
   elements.dropZone.querySelector("strong").textContent = "请使用局域网地址";
@@ -249,7 +249,7 @@ function setServerStatus(state) {
     online: "服务在线",
     offline: "服务离线",
     connecting: "服务重连中",
-    demo: "展示模式"
+    p2p: "P2P 可用"
   };
   elements.serverStatus.className = `server-status ${state}`;
   elements.serverStatus.lastElementChild.textContent = labels[state];
