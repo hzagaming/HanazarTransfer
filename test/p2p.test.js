@@ -7,6 +7,7 @@ import {
   buildInviteUrl,
   decodeSignal,
   encodeSignal,
+  readActiveChannelData,
   resolveChunkSize,
   validateFileBatch,
   waitForIceComplete
@@ -62,4 +63,20 @@ test("stops ICE gathering immediately when a pairing connection closes", async (
   connection.signalingState = "closed";
   connection.dispatchEvent(new Event("signalingstatechange"));
   await assert.rejects(waiting, { name: "AbortError" });
+});
+
+test("drops a Blob payload when its DataChannel becomes stale during decoding", async () => {
+  let finishRead;
+  class DeferredBlob extends Blob {
+    arrayBuffer() {
+      return new Promise((resolve) => { finishRead = resolve; });
+    }
+  }
+
+  let active = true;
+  const reading = readActiveChannelData(new DeferredBlob(), () => active);
+  active = false;
+  finishRead(new ArrayBuffer(1));
+
+  assert.equal(await reading, null);
 });

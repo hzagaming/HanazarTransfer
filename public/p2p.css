@@ -70,7 +70,6 @@
 .p2p-activity-action { min-height: 34px; border: 0; border-radius: 7px; padding: 0 12px; display: inline-flex; align-items: center; color: #fff; background: var(--green); cursor: pointer; text-decoration: none; font-size: 10px; font-weight: 750; }
 .p2p-activity-action.delivered { color: var(--muted); background: #efeee8; cursor: default; }
 .p2p-disconnect { width: 100%; min-height: 38px; margin-top: 20px; }
-.p2p-page .file-list-header button:disabled, .p2p-page .remove-file:disabled { cursor: not-allowed; opacity: 0.4; }
 .p2p-status.connected .status-dot { background: #45a36b; box-shadow: 0 0 0 4px rgba(69, 163, 107, 0.14); }
 .p2p-status.connecting .status-dot, .p2p-status.waiting .status-dot { background: #c18a33; box-shadow: 0 0 0 4px rgba(193, 138, 51, 0.14); }
 .p2p-status.error .status-dot { background: #c84835; box-shadow: 0 0 0 4px rgba(200, 72, 53, 0.14); }

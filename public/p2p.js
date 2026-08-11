@@ -140,7 +140,7 @@ function boot() {
   let channel = null;
   let selectedFiles = [];
   let sending = false;
-  let sendCancelled = false;
+  let sendController = null;
   let activeSendId = null;
   let incoming = null;
   let receiveQueue = Promise.resolve();
@@ -173,7 +173,7 @@ function boot() {
     elements.soundToggle.addEventListener("click", toggleSound);
     elements.create.addEventListener("click", () => void startHost());
     elements.join.addEventListener("click", showJoinFlow);
-    elements.reset.addEventListener("click", resetPairing);
+    elements.reset.addEventListener("click", () => resetPairing(true));
     elements.copyInvite.addEventListener("click", () => void copySignal(elements.inviteOutput.value, "邀请链接已复制"));
     elements.shareInvite.addEventListener("click", () => void shareSignal("Hanazar P2P 邀请", elements.inviteOutput.value, true));
     elements.hostAnswerForm.addEventListener("submit", (event) => void applyAnswer(event));
@@ -346,8 +346,12 @@ function boot() {
     channel.addEventListener("message", (event) => {
       if (channel !== nextChannel) return;
       receiveQueue = receiveQueue
-        .then(() => handleIncomingData(event.data))
+        .then(() => {
+          if (channel !== nextChannel) return;
+          return handleIncomingData(event.data, nextChannel);
+        })
         .catch((error) => {
+          if (channel !== nextChannel) return;
           showToast(friendlyError(error, "收到无效的传输数据，连接已断开"), true);
           returnToPairing("传输协议错误", true);
         });
@@ -380,6 +384,7 @@ function boot() {
     sendControl({ t: "hello", name: detectDeviceName() });
     showToast("P2P 连接成功，可以开始传输");
     void playSound("success");
+    focusRegion(elements.workspace);
   }
 
   function returnToPairing(message, isError = false) {
@@ -392,9 +397,10 @@ function boot() {
     setTransferEnabled(false);
     setState(isError ? "error" : "idle", isError ? "需要重新配对" : "等待配对");
     if (message) showToast(message, isError);
+    focusRegion(elements.setup);
   }
 
-  function resetPairing() {
+  function resetPairing(shouldFocus = false) {
     closePeer();
     showSetupAndHistory();
     elements.roleActions.hidden = false;
@@ -409,6 +415,7 @@ function boot() {
     elements.answerOutput.value = "";
     setTransferEnabled(false);
     setState("idle", "等待配对");
+    if (shouldFocus) focusRegion(elements.setup);
   }
 
   function showSetupAndHistory() {
@@ -439,7 +446,8 @@ function boot() {
     }
     acknowledgements.clear();
     sending = false;
-    sendCancelled = false;
+    sendController?.abort(new Error("设备连接已断开"));
+    sendController = null;
     activeSendId = null;
     renderFiles();
     hideProgress(elements.sendProgress);
@@ -489,6 +497,7 @@ function boot() {
       remove.addEventListener("click", () => {
         selectedFiles.splice(index, 1);
         renderFiles();
+        if (!selectedFiles.length) elements.fileInput.focus();
       });
       item.append(type, details, remove);
       elements.fileList.append(item);
@@ -504,6 +513,7 @@ function boot() {
     if (sending) return;
     selectedFiles = [];
     renderFiles();
+    elements.fileInput.focus();
   }
 
   async function sendSelectedFiles() {
@@ -515,7 +525,9 @@ function boot() {
       return;
     }
     sending = true;
-    sendCancelled = false;
+    const controller = new AbortController();
+    const { signal } = controller;
+    sendController = controller;
     elements.cancelSend.hidden = false;
     elements.cancelSend.disabled = false;
     renderFiles();
@@ -528,24 +540,29 @@ function boot() {
         const file = selectedFiles[fileIndex];
         const id = createId();
         activeSendId = id;
+        elements.cancelSend.disabled = false;
+        elements.cancelSend.textContent = "取消本次发送";
         sendControl({ t: "file-start", id, name: file.name, size: file.size, type: safeMime(file.type) });
-        await expectAcknowledgement(id, "file-ready");
+        await expectAcknowledgement(id, "file-ready", signal);
         const chunkSize = resolveChunkSize(connection?.sctp?.maxMessageSize);
         let offset = 0;
         while (offset < file.size) {
-          if (sendCancelled) throw abortError("发送已取消");
-          await waitForWritable();
+          throwIfAborted(signal);
+          await waitForWritable(signal);
           const end = Math.min(offset + chunkSize, file.size);
           const chunk = await file.slice(offset, end).arrayBuffer();
-          if (sendCancelled) throw abortError("发送已取消");
+          throwIfAborted(signal);
           channel.send(chunk);
           offset = end;
           const percent = totalBytes ? Math.round(((completedBytes + offset) / totalBytes) * 100) : 100;
           showProgress(elements.sendProgress, elements.sendProgressLabel, elements.sendProgressValue, percent, `正在发送 ${fileIndex + 1} / ${selectedFiles.length}`);
         }
-        if (sendCancelled) throw abortError("发送已取消");
+        throwIfAborted(signal);
+        elements.cancelSend.disabled = true;
+        elements.cancelSend.textContent = "正在确认送达…";
         sendControl({ t: "file-end", id });
         await expectAcknowledgement(id, "file-ack");
+        activeSendId = null;
         completedBytes += file.size;
         addFileActivity(file.name, file.size, "outgoing");
       }
@@ -554,12 +571,15 @@ function boot() {
       renderFiles();
       showToast("文件已送达另一台设备");
       void playSound("success");
+      focusRegion(elements.workspace);
     } catch (error) {
-      if (activeSendId && isConnected()) sendControl({ t: "file-cancel", id: activeSendId });
+      if (activeSendId && isConnected()) {
+        try { sendControl({ t: "file-cancel", id: activeSendId }); } catch {}
+      }
       showToast(error.name === "AbortError" ? error.message : friendlyError(error, "文件发送失败，请重新连接后重试"), error.name !== "AbortError");
     } finally {
       sending = false;
-      sendCancelled = false;
+      sendController = null;
       activeSendId = null;
       elements.cancelSend.hidden = true;
       elements.cancelSend.disabled = false;
@@ -572,13 +592,14 @@ function boot() {
   }
 
   function cancelSend() {
-    if (!sending || sendCancelled) return;
-    sendCancelled = true;
+    if (!sending || elements.cancelSend.disabled || sendController?.signal.aborted) return;
+    sendController.abort(abortError("发送已取消"));
     elements.cancelSend.disabled = true;
     elements.cancelSend.textContent = "正在取消…";
   }
 
-  async function waitForWritable() {
+  async function waitForWritable(signal) {
+    throwIfAborted(signal);
     if (!isConnected()) throw new Error("设备连接已断开");
     const activeChannel = channel;
     if (activeChannel.bufferedAmount <= BUFFER_HIGH_WATER) return;
@@ -587,30 +608,49 @@ function boot() {
       const timer = setTimeout(() => finish(() => reject(new Error("发送缓冲区长时间无响应"))), 30_000);
       const onLow = () => finish(resolve);
       const onClose = () => finish(() => reject(new Error("设备连接已断开")));
+      const onAbort = () => finish(() => reject(abortReason(signal)));
       const finish = (callback) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
         activeChannel.removeEventListener("bufferedamountlow", onLow);
         activeChannel.removeEventListener("close", onClose);
+        signal.removeEventListener("abort", onAbort);
         callback();
       };
       activeChannel.addEventListener("bufferedamountlow", onLow);
       activeChannel.addEventListener("close", onClose);
+      signal.addEventListener("abort", onAbort, { once: true });
+      if (signal.aborted) onAbort();
     });
   }
 
-  function expectAcknowledgement(id, expected) {
+  function expectAcknowledgement(id, expected, signal) {
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
+      let waiter;
+      const finish = (callback) => {
+        if (acknowledgements.get(id) !== waiter) return;
+        clearTimeout(waiter.timer);
+        signal?.removeEventListener("abort", waiter.onAbort);
         acknowledgements.delete(id);
-        reject(new Error("接收设备未确认文件，请重试"));
-      }, ACK_TIMEOUT_MS);
-      acknowledgements.set(id, { resolve, reject, timer, expected });
+        callback();
+      };
+      const onAbort = () => waiter.reject(abortReason(signal));
+      waiter = {
+        expected,
+        onAbort,
+        resolve: () => finish(resolve),
+        reject: (error) => finish(() => reject(error)),
+        timer: null
+      };
+      waiter.timer = setTimeout(() => waiter.reject(new Error("接收设备未确认文件，请重试")), ACK_TIMEOUT_MS);
+      acknowledgements.set(id, waiter);
+      signal?.addEventListener("abort", onAbort, { once: true });
+      if (signal?.aborted) onAbort();
     });
   }
 
-  async function handleIncomingData(data) {
+  async function handleIncomingData(data, sourceChannel) {
     if (typeof data === "string") {
       if (data.length > 64 * 1024) throw new Error("收到过大的控制消息");
       let message;
@@ -618,7 +658,8 @@ function boot() {
       if (message?.v !== PROTOCOL_VERSION || typeof message.t !== "string") throw new Error("传输协议版本不匹配");
       return handleControl(message);
     }
-    const buffer = data instanceof Blob ? await data.arrayBuffer() : data;
+    const buffer = await readActiveChannelData(data, () => channel === sourceChannel);
+    if (buffer === null || channel !== sourceChannel) return;
     if (!(buffer instanceof ArrayBuffer) || !incoming) throw new Error("收到顺序异常的文件数据");
     if (incoming.received + buffer.byteLength > incoming.size) throw new Error("收到的文件大小超过声明值");
     incoming.parts.push(buffer);
@@ -694,8 +735,6 @@ function boot() {
     const waiter = acknowledgements.get(message.id);
     if (!waiter) return;
     if (message.t !== waiter.expected && message.t !== "file-reject") return;
-    clearTimeout(waiter.timer);
-    acknowledgements.delete(message.id);
     if (message.t === waiter.expected) waiter.resolve();
     else waiter.reject(new Error(typeof message.reason === "string" ? message.reason.slice(0, 120) : "接收设备拒绝了文件"));
   }
@@ -780,6 +819,7 @@ function boot() {
     elements.clearActivity.hidden = true;
     receivedBytes = 0;
     if (!isConnected() && elements.setup.hidden === false) elements.workspace.hidden = true;
+    focusRegion(elements.workspace.hidden ? elements.setup : elements.workspace);
   }
 
   function removeActivity(record) {
@@ -822,6 +862,13 @@ function boot() {
     container.hidden = true;
     container.setAttribute("aria-valuenow", "0");
     container.querySelector("i").style.width = "0%";
+  }
+
+  function focusRegion(element) {
+    if (document.visibilityState !== "visible") return;
+    requestAnimationFrame(() => {
+      if (!element.hidden) element.focus();
+    });
   }
 
   async function copySignal(text, successMessage) {
@@ -915,6 +962,11 @@ function boot() {
   }
 }
 
+export async function readActiveChannelData(data, isActive) {
+  const buffer = data instanceof Blob ? await data.arrayBuffer() : data;
+  return isActive() ? buffer : null;
+}
+
 function setButtonBusy(button, busy, label) {
   button.disabled = busy;
   button.classList.toggle("loading", busy);
@@ -969,4 +1021,12 @@ function abortError(message) {
   const error = new Error(message);
   error.name = "AbortError";
   return error;
+}
+
+function throwIfAborted(signal) {
+  if (signal.aborted) throw abortReason(signal);
+}
+
+function abortReason(signal) {
+  return signal.reason instanceof Error ? signal.reason : abortError("发送已取消");
 }

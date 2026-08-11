@@ -7,8 +7,8 @@
     <meta name="description" content="无需服务器，通过 WebRTC 在两台设备之间点对点传送文件和文字。">
     <meta name="referrer" content="no-referrer">
     <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="./styles.css?v=0.3.0">
-    <link rel="stylesheet" href="./p2p.css?v=0.3.0">
+    <link rel="stylesheet" href="./styles.css?v=0.3.1">
+    <link rel="stylesheet" href="./p2p.css?v=0.3.1">
     <title>Hanazar Transfer — P2P 直传</title>
   </head>
   <body class="p2p-page">
@@ -51,7 +51,7 @@
           </div>
 
           <div class="card-body p2p-card-body">
-            <section id="p2p-setup" aria-labelledby="p2p-setup-title">
+            <section id="p2p-setup" tabindex="-1" aria-labelledby="p2p-setup-title">
               <div class="panel-heading p2p-heading">
                 <div><span class="step-label">STEP 01</span><h2 id="p2p-setup-title">连接另一台设备</h2></div>
                 <span class="limit-copy">同一 Wi-Fi 成功率最高</span>
@@ -111,7 +111,7 @@
               <button class="text-button p2p-reset" id="p2p-reset" type="button" hidden>← 重新选择连接方式</button>
             </section>
 
-            <section id="p2p-workspace" aria-labelledby="p2p-workspace-title" hidden>
+            <section id="p2p-workspace" tabindex="-1" aria-labelledby="p2p-workspace-title" hidden>
               <div class="p2p-connection-banner" id="p2p-connection-banner" role="status" aria-live="polite">
                 <span aria-hidden="true">✓</span><div><b id="p2p-workspace-title">设备已直连</b><small id="p2p-remote-name">另一台设备在线</small></div>
               </div>
@@ -162,9 +162,9 @@
         </section>
       </main>
 
-      <footer><span>© 2026 HANAZAR</span><span>P2P DIRECT TRANSFER · V0.3.0</span></footer>
+      <footer><span>© 2026 HANAZAR</span><span>P2P DIRECT TRANSFER · V0.3.1</span></footer>
     </div>
     <div class="toast" id="p2p-toast" role="status" aria-live="polite"></div>
-    <script src="./p2p.js?v=0.3.0" type="module"></script>
+    <script src="./p2p.js?v=0.3.1" type="module"></script>
   </body>
 </html>

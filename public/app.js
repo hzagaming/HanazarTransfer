@@ -111,12 +111,14 @@ function bindEvents() {
   elements.fileInput.addEventListener("change", () => addFiles(elements.fileInput.files));
   elements.dropZone.addEventListener("dragover", (event) => {
     event.preventDefault();
+    if (staticDemo || elements.sendButton.classList.contains("loading")) return;
     elements.dropZone.classList.add("dragging");
   });
   elements.dropZone.addEventListener("dragleave", () => elements.dropZone.classList.remove("dragging"));
   elements.dropZone.addEventListener("drop", (event) => {
     event.preventDefault();
     elements.dropZone.classList.remove("dragging");
+    if (staticDemo || elements.sendButton.classList.contains("loading")) return;
     addFiles(event.dataTransfer.files);
   });
   elements.clearFiles.addEventListener("click", clearFiles);
@@ -401,7 +403,7 @@ function handleTabKeydown(event) {
 }
 
 function addFiles(fileList) {
-  if (staticDemo) return;
+  if (staticDemo || elements.sendButton.classList.contains("loading")) return;
   const incoming = Array.from(fileList);
   if (!incoming.length) return;
   const merged = [...files];
@@ -455,6 +457,7 @@ function renderSelectedFiles(progress = new Map()) {
     remove.addEventListener("click", () => {
       files.splice(index, 1);
       renderSelectedFiles();
+      if (!files.length) elements.fileInput.focus();
     });
     item.append(type, details, progressText, remove);
     elements.sendFileList.append(item);
@@ -471,6 +474,7 @@ async function sendFiles() {
   setSending(true, "正在创建安全传输…", false);
   const progress = new Map();
   const targetPeer = nearbyPeers.find((peer) => peer.id === selectedPeerId);
+  let notifiedPeer = null;
 
   try {
     const response = await fetch("/api/transfers", {
@@ -496,12 +500,13 @@ async function sendFiles() {
     if (targetPeer) {
       try {
         await sendPeerMessage(targetPeer.id, "transfer", { code: currentTransfer.code });
+        notifiedPeer = targetPeer;
         showToast(`已通知 ${targetPeer.name}`);
       } catch (error) {
         showToast(`${userErrorMessage(error)}，请改用传输码`, true);
       }
     }
-    showSendResult(currentTransfer, targetPeer);
+    showSendResult(currentTransfer, notifiedPeer);
     void playSound("success");
   } catch (error) {
     const cancelled = uploadCancelled || error.name === "AbortError";
@@ -590,6 +595,7 @@ function showSendResult(transfer, targetPeer) {
   elements.sendFormView.hidden = true;
   elements.sendResult.hidden = false;
   setSending(false);
+  focusRegion(elements.sendResult);
 }
 
 async function lookupTransfer(inputCode) {
@@ -609,6 +615,7 @@ async function lookupTransfer(inputCode) {
     activeReceiveStatus = transfer.status;
     activeReceiveSignature = receiveSignature(transfer);
     renderDownloads(transfer);
+    focusRegion(elements.receiveResult);
     scheduleReceiveRefresh(generation);
     const url = new URL(location.href);
     url.searchParams.set("code", code);
@@ -714,6 +721,7 @@ function resetSender() {
   elements.sendFormView.hidden = false;
   renderSelectedFiles();
   updateSendButtonLabel();
+  elements.fileInput.focus();
 }
 
 function resetReceiver() {
@@ -730,6 +738,7 @@ function resetReceiver() {
 function clearFiles() {
   files = [];
   renderSelectedFiles();
+  elements.fileInput.focus();
 }
 
 function openTextModal() {
@@ -904,10 +913,19 @@ function setSending(active, label = defaultSendLabel(), cancelable = active) {
   elements.sendButton.querySelector("span").textContent = label;
   elements.sendButton.setAttribute("aria-label", label);
   elements.fileInput.disabled = active;
+  elements.dropZone.classList.remove("dragging");
+  elements.dropZone.setAttribute("aria-disabled", String(staticDemo || active));
   elements.clearFiles.disabled = active;
   elements.cancelUpload.hidden = !cancelable;
   elements.cancelUpload.disabled = !cancelable;
   for (const button of elements.sendFileList.querySelectorAll(".remove-file")) button.disabled = active;
+}
+
+function focusRegion(element) {
+  if (document.visibilityState !== "visible") return;
+  requestAnimationFrame(() => {
+    if (!element.hidden) element.focus();
+  });
 }
 
 function updateSendButtonLabel() {

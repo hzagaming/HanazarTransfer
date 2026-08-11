@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#13241d">
     <meta name="description" content="无需登录，通过浏览器 P2P 直传或局域网服务在手机、平板和电脑之间传送文件与文字。">
     <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="./styles.css?v=0.3.0">
+    <link rel="stylesheet" href="./styles.css?v=0.3.1">
     <title>Hanazar Transfer — 跨设备文件传输</title>
   </head>
   <body>
@@ -101,7 +101,7 @@
                 <button class="text-button upload-cancel" id="cancel-upload" type="button" hidden>取消本次上传</button>
               </div>
 
-              <div class="success-view" id="send-result" hidden>
+              <div class="success-view" id="send-result" tabindex="-1" hidden>
                 <div class="success-badge"><span>✓</span>文件已就绪</div>
                 <p class="result-kicker" id="result-kicker">在另一台设备输入传输码</p>
                 <div class="transfer-code" id="transfer-code" aria-label="传输码"></div>
@@ -129,7 +129,7 @@
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-5-5l5 5-5 5"/></svg>
                 </button>
               </form>
-              <div class="receive-result" id="receive-result" hidden>
+              <div class="receive-result" id="receive-result" tabindex="-1" hidden>
                 <div class="receive-summary" role="status" aria-live="polite" aria-atomic="true"><span class="ready-icon" id="receive-icon">✓</span><div><b id="receive-title">文件可以下载</b><small id="receive-meta"></small></div></div>
                 <ul class="download-list" id="download-list"></ul>
                 <button class="text-button" id="lookup-another" type="button">← 输入另一个传输码</button>
@@ -146,7 +146,7 @@
 
       <footer>
         <span>© 2026 HANAZAR</span>
-        <span>LOCAL FILE RELAY · V0.3.0</span>
+        <span>LOCAL FILE RELAY · V0.3.1</span>
       </footer>
     </div>
 
@@ -179,6 +179,6 @@
       </section>
     </div>
 
-    <script src="./app.js?v=0.3.0" type="module"></script>
+    <script src="./app.js?v=0.3.1" type="module"></script>
   </body>
 </html>
