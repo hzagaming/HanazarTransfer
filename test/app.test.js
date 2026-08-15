@@ -171,6 +171,18 @@ test("registers LAN devices and delivers real-time messages over SSE", { timeout
   });
 });
 
+test("rejects invalid SSE credentials before opening the event stream", async () => {
+  await withApp(async (origin) => {
+    const peer = await registerPeer(origin, "Laptop", "desktop");
+    const response = await fetch(`${origin}/api/peers/${peer.id}/events?token=invalid`);
+
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), {
+      error: { code: "INVALID_PEER_TOKEN", message: "设备凭证无效" }
+    });
+  });
+});
+
 async function registerPeer(origin, name, deviceType) {
   const response = await fetch(`${origin}/api/peers`, {
     method: "POST",

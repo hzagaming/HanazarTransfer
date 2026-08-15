@@ -744,7 +744,10 @@ function boot() {
     const text = elements.textInput.value;
     if (!isConnected()) return showToast("请先连接另一台设备", true);
     if (!text.trim()) return showToast("请输入要发送的文字", true);
-    sendControl({ t: "text", text });
+    if (!trySendText(sendControl, text)) {
+      showToast("文字发送失败，请确认连接后重试", true);
+      return;
+    }
     addTextActivity(text, "outgoing");
     elements.textInput.value = "";
     showToast("文字已发送");
@@ -965,6 +968,15 @@ function boot() {
 export async function readActiveChannelData(data, isActive) {
   const buffer = data instanceof Blob ? await data.arrayBuffer() : data;
   return isActive() ? buffer : null;
+}
+
+export function trySendText(send, text) {
+  try {
+    send({ t: "text", text });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function setButtonBusy(button, busy, label) {

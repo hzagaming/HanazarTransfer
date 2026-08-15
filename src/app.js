@@ -61,6 +61,17 @@ async function route({ request, response, store, peerRegistry, publicDir }) {
 
   const peerEventsMatch = path.match(/^\/api\/peers\/([a-f0-9]{16})\/events$/);
   if (peerEventsMatch && request.method === "GET") {
+    const pendingEvents = [];
+    let eventsReady = false;
+    const emit = (type, data) => {
+      if (eventsReady) sendEvent(response, type, data);
+      else pendingEvents.push([type, data]);
+    };
+    const unsubscribe = peerRegistry.subscribe(
+      peerEventsMatch[1],
+      url.searchParams.get("token"),
+      emit
+    );
     response.writeHead(200, {
       "content-type": "text/event-stream; charset=utf-8",
       "cache-control": "no-cache, no-transform",
@@ -68,11 +79,8 @@ async function route({ request, response, store, peerRegistry, publicDir }) {
       "x-accel-buffering": "no"
     });
     response.write("retry: 2000\n\n");
-    const unsubscribe = peerRegistry.subscribe(
-      peerEventsMatch[1],
-      url.searchParams.get("token"),
-      (type, data) => sendEvent(response, type, data)
-    );
+    eventsReady = true;
+    for (const [type, data] of pendingEvents) sendEvent(response, type, data);
     const heartbeat = setInterval(() => response.write(": keepalive\n\n"), 15_000);
     heartbeat.unref();
     response.on("close", () => {

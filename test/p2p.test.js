@@ -9,6 +9,7 @@ import {
   encodeSignal,
   readActiveChannelData,
   resolveChunkSize,
+  trySendText,
   validateFileBatch,
   waitForIceComplete
 } from "../public/p2p.js";
@@ -79,4 +80,11 @@ test("drops a Blob payload when its DataChannel becomes stale during decoding", 
   finishRead(new ArrayBuffer(1));
 
   assert.equal(await reading, null);
+});
+
+test("contains DataChannel errors while sending text", () => {
+  const sent = [];
+  assert.equal(trySendText((payload) => sent.push(payload), "hello"), true);
+  assert.deepEqual(sent, [{ t: "text", text: "hello" }]);
+  assert.equal(trySendText(() => { throw new Error("channel closed"); }, "retry"), false);
 });
