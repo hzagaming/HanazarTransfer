@@ -2,7 +2,7 @@
 
 一个无需账号的跨设备文件传输工具。可以直接使用 GitHub Pages 在两个现代浏览器之间进行 WebRTC 加密直传，也可以在局域网电脑运行 Node.js 服务，自动发现设备并中转文件或文字。
 
-当前版本：`v1.0.0` · [查看版本公告](ANNOUNCEMENT.md) · [历史公告](docs/announcements/README.md)
+当前版本：`v1.1.0` · [查看版本公告](ANNOUNCEMENT.md) · [历史公告](docs/announcements/README.md)
 
 ## 已实现
 

@@ -381,7 +381,10 @@ function boot() {
     elements.remoteName.textContent = "正在识别另一台设备…";
     setState("connected", "设备已直连");
     setTransferEnabled(true);
-    sendControl({ t: "hello", name: detectDeviceName() });
+    if (!trySendControl(sendControl, { t: "hello", name: detectDeviceName() })) {
+      returnToPairing("设备连接已断开", true);
+      return;
+    }
     showToast("P2P 连接成功，可以开始传输");
     void playSound("success");
     focusRegion(elements.workspace);
@@ -971,8 +974,12 @@ export async function readActiveChannelData(data, isActive) {
 }
 
 export function trySendText(send, text) {
+  return trySendControl(send, { t: "text", text });
+}
+
+export function trySendControl(send, payload) {
   try {
-    send({ t: "text", text });
+    send(payload);
     return true;
   } catch {
     return false;

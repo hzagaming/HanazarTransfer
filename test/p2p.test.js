@@ -9,6 +9,7 @@ import {
   encodeSignal,
   readActiveChannelData,
   resolveChunkSize,
+  trySendControl,
   trySendText,
   validateFileBatch,
   waitForIceComplete
@@ -87,4 +88,12 @@ test("contains DataChannel errors while sending text", () => {
   assert.equal(trySendText((payload) => sent.push(payload), "hello"), true);
   assert.deepEqual(sent, [{ t: "text", text: "hello" }]);
   assert.equal(trySendText(() => { throw new Error("channel closed"); }, "retry"), false);
+});
+
+test("contains DataChannel errors while sending the connection greeting", () => {
+  const greeting = { t: "hello", name: "Mac" };
+  const sent = [];
+  assert.equal(trySendControl((payload) => sent.push(payload), greeting), true);
+  assert.deepEqual(sent, [greeting]);
+  assert.equal(trySendControl(() => { throw new Error("channel closed"); }, greeting), false);
 });
